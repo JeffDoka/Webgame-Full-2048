@@ -233,6 +233,7 @@ function handleSwipe(direction) {
 
   if (state.screen !== 'PLAYING') return;
   if (renderer.isAnimating()) return;
+  if (state.powerDropChoices) return; // picker open — block moves
 
   const { newGrid, moved, moves, scoreIncrement } = logic.slide(state.grid, direction);
   if (!moved) return;
@@ -265,12 +266,11 @@ function handleSwipe(direction) {
   state.totalMoves++;
   state.turn++;
 
-  // Power drop every N moves
+  // Power drop every N moves — show 3-choice picker
   if (state.powersEnabled && state.totalMoves % CONFIG.POWER_DROP_EVERY === 0) {
-    const allPowers = ['LASER', 'BOMB', 'REARRANGE', 'DOUBLE', 'UNDO'];
-    const pick = allPowers[Math.floor(Math.random() * allPowers.length)];
-    state.powers[pick] = (state.powers[pick] || 0) + 1;
-    renderer.showPowerDrop(pick);
+    const allPowers = ['LASER', 'BOMB', 'REARRANGE', 'DOUBLE', 'UNDO', 'FREEZE', 'UPGRADE', 'SWAP'];
+    const shuffled = [...allPowers].sort(() => Math.random() - 0.5);
+    state.powerDropChoices = shuffled.slice(0, 3);
   }
 
   // Update tile ages
@@ -324,6 +324,19 @@ function handleSwipe(direction) {
 // ============================================================
 
 function handleTap(x, y) {
+  // Power-drop picker — intercepts all taps until player picks
+  if (state.powerDropChoices) {
+    for (const btn of renderer.hitAreas.powerDropChoices) {
+      if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) {
+        state.powers[btn.name] = (state.powers[btn.name] || 0) + 1;
+        renderer.showPowerDrop(btn.name);
+        state.powerDropChoices = null;
+        return;
+      }
+    }
+    return; // taps outside the 3 buttons do nothing — choice is required
+  }
+
   // Quit button
   if (input.hitTestQuit(x, y) && (state.screen === 'PLAYING' || state.screen === 'TARGETING')) {
     quitToMenu();

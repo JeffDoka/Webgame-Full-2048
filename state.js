@@ -42,8 +42,9 @@ export const state = {
 
   // ---- Undo history (stores snapshots for UNDO powerup) ----
   undoStack: [],  // [{grid, score, totalMoves, tileAges}] — max 3 deep
-  freezeNextSpawn: false,  // FREEZE powerup: skip next tile spawn
-  swapFirst:       null,   // {row,col} — first tile selected during SWAP targeting
+  freezeNextSpawn:   false, // FREEZE powerup: skip next tile spawn
+  swapFirst:         null,  // {row,col} — first tile selected during SWAP targeting
+  powerDropChoices:  null,  // [name, name, name] — pending picker, null when inactive
 
   // ---- Admin ----
   adminTapCount:  0,
@@ -93,8 +94,9 @@ export function startNewGame() {
   state.minOccupiedCells = N * N;
   state.onlyLaserUsed    = true;
   state.undoStack        = [];
-  state.freezeNextSpawn = false;
-  state.swapFirst       = null;
+  state.freezeNextSpawn  = false;
+  state.swapFirst        = null;
+  state.powerDropChoices = null;
 
   state.screen = 'PLAYING';
 }

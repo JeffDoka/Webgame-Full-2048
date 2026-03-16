@@ -35,12 +35,13 @@ let onAnimDone = null;
 // ---- Hit-areas (for input module) ----
 // Populated each render so input.js can do hit-testing
 export let hitAreas = {
-  powerups:    [],   // [{name, x,y,w,h}]  — absolute canvas coords
-  quitBtn:     null, // {x,y,w,h}
-  cells:       [],   // [{row,col,x,y,w,h}] — used during TARGETING
-  arrows:      [],   // [{dir, x,y,w,h}]    — directional bumper buttons
-  barRect:     null, // {x,y,w,h}           — full powerup bar area for drag detection
-  scrollTrack: null, // {x,y,w,h,maxScroll} — scroll indicator track for click-to-jump
+  powerups:         [],   // [{name, x,y,w,h}]  — absolute canvas coords
+  quitBtn:          null, // {x,y,w,h}
+  cells:            [],   // [{row,col,x,y,w,h}] — used during TARGETING
+  arrows:           [],   // [{dir, x,y,w,h}]    — directional bumper buttons
+  barRect:          null, // {x,y,w,h}           — full powerup bar area for drag detection
+  scrollTrack:      null, // {x,y,w,h,maxScroll} — scroll indicator track for click-to-jump
+  powerDropChoices: [],   // [{name, x,y,w,h}]   — 3-choice picker buttons
 };
 
 // ---- Powerup bar scroll state ----
@@ -109,6 +110,8 @@ export function render(timestamp) {
   if (state.freezeNextSpawn) drawFreezeIndicator(layout);
   drawPowerDropToast(layout, timestamp);
 
+  if (state.powerDropChoices) drawPowerDropPicker(layout);
+
   // Advance phase
   if (phase !== 'idle' && t >= 1) {
     nextPhase(timestamp);
@@ -150,7 +153,7 @@ export function flashCell(row, col, callback) {
 let powerDropToast = null; // { text, alpha, startTime }
 
 export function showPowerDrop(powerName) {
-  const labels = { LASER: '⚡ Laser', BOMB: '💣 Bomb', REARRANGE: '🔀 Shuffle', DOUBLE: '×2 Double', UNDO: '↩ Undo' };
+  const labels = { LASER: '⚡ Laser', BOMB: '💣 Bomb', REARRANGE: '🔀 Shuffle', DOUBLE: '×2 Double', UNDO: '↩ Undo', FREEZE: '❄ Freeze', UPGRADE: '⬆ Upgrade', SWAP: '↔ Swap' };
   powerDropToast = { text: `+1 ${labels[powerName] || powerName}`, alpha: 1, startTime: performance.now() };
 }
 
@@ -488,12 +491,11 @@ function drawPowerupBar(layout) {
     { name: 'SWAP',    icon: '↔',  label: 'SWAP'    },
   ];
 
-  // Sort: non-zero charges first (desc), then zero charges
+  // Sort: highest charge count on the left
   const sorted = [...ALL_POWERS].sort((a, b) => {
     const ca = state.powers[a.name] ?? 0;
     const cb = state.powers[b.name] ?? 0;
-    if ((ca > 0) !== (cb > 0)) return ca > 0 ? -1 : 1; // non-zero before zero
-    return cb - ca; // higher charges first within same group
+    return cb - ca;
   });
 
   const btnH      = barH - 14;           // button height leaves room for scroll indicator
@@ -664,6 +666,85 @@ function drawTargetingOverlay(layout) {
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(hint, boardX + boardSize / 2, boardY - 14);
+}
+
+// ============================================================
+// DRAWING — Power-drop 3-Choice Picker
+// ============================================================
+
+const POWER_META = {
+  LASER:    { icon: '⚡', label: 'LASER'   },
+  BOMB:     { icon: '💣', label: 'BOMB'    },
+  REARRANGE:{ icon: '🔀', label: 'SHUFFLE' },
+  DOUBLE:   { icon: '×2', label: 'DOUBLE'  },
+  UNDO:     { icon: '↩',  label: 'UNDO'    },
+  FREEZE:   { icon: '❄',  label: 'FREEZE'  },
+  UPGRADE:  { icon: '⬆',  label: 'UPGRADE' },
+  SWAP:     { icon: '↔',  label: 'SWAP'    },
+};
+
+function drawPowerDropPicker(layout) {
+  const { w, h } = layout;
+
+  // Full-screen dim
+  ctx.fillStyle = 'rgba(0,0,0,0.58)';
+  ctx.fillRect(0, 0, w, h);
+
+  // Card
+  const btnW = 82, btnH = 92, btnGap = 10;
+  const totalBtnW = 3 * btnW + 2 * btnGap;
+  const cardPadX = 24, cardPadTop = 44, cardPadBot = 20;
+  const cardW = totalBtnW + cardPadX * 2;
+  const cardH = cardPadTop + btnH + cardPadBot;
+  const cardX = (w - cardW) / 2;
+  const cardY = (h - cardH) / 2;
+
+  roundRect(ctx, cardX, cardY, cardW, cardH, 20);
+  ctx.fillStyle = '#faf8ef';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(187,173,160,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Title
+  ctx.fillStyle    = CONFIG.COLORS.TEXT_DARK;
+  ctx.font         = `bold 13px ${CONFIG.FONT_FAMILY}`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('⚡ Power Drop — pick one!', w / 2, cardY + 22);
+
+  // Buttons
+  const btnStartX = cardX + cardPadX;
+  const btnY      = cardY + cardPadTop;
+
+  hitAreas.powerDropChoices = [];
+
+  (state.powerDropChoices || []).forEach((name, i) => {
+    const meta = POWER_META[name] || { icon: '?', label: name };
+    const bX   = btnStartX + i * (btnW + btnGap);
+
+    // Button bg
+    roundRect(ctx, bX, btnY, btnW, btnH, 12);
+    ctx.fillStyle = 'rgba(187,173,160,0.22)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(187,173,160,0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Icon
+    ctx.font         = `${Math.round(btnH * 0.36)}px ${CONFIG.FONT_FAMILY}`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle    = CONFIG.COLORS.TEXT_DARK;
+    ctx.fillText(meta.icon, bX + btnW / 2, btnY + btnH * 0.38);
+
+    // Label
+    ctx.font      = `bold 9px ${CONFIG.FONT_FAMILY}`;
+    ctx.fillStyle = CONFIG.COLORS.TEXT_DARK;
+    ctx.fillText(meta.label, bX + btnW / 2, btnY + btnH * 0.76);
+
+    hitAreas.powerDropChoices.push({ name, x: bX, y: btnY, w: btnW, h: btnH });
+  });
 }
 
 // ============================================================
