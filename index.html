@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>2048 — The Master Edition</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ═══════════════════════════════════════
+         MENU SCREEN
+    ═══════════════════════════════════════ -->
+    <div class="screen active" id="screen-menu">
+      <div class="menu-bg" id="menu-bg"></div>
+      <div class="menu-content">
+        <div class="menu-title-wrap">
+          <h1 class="title">2048</h1>
+          <p class="subtitle">The Master Edition</p>
+        </div>
+        <div class="menu-scores">
+          <div class="score-chip">
+            <span class="score-label">BEST</span>
+            <span class="score-value" id="menu-best">0</span>
+          </div>
+          <div class="score-chip">
+            <span class="score-label">TODAY</span>
+            <span class="score-value" id="menu-daily">—</span>
+          </div>
+        </div>
+        <div class="menu-buttons">
+          <button class="btn btn-primary" id="btn-play">▶ &nbsp;PLAY</button>
+          <div class="menu-row">
+            <button class="btn btn-secondary" id="btn-history">HISTORY</button>
+            <button class="btn btn-secondary" id="btn-settings">SETTINGS</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         GAME SCREEN (Canvas-driven)
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-game">
+      <canvas id="game-canvas"></canvas>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         HISTORY SCREEN
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-history">
+      <div class="screen-header">
+        <button class="btn-back" id="btn-history-back">←</button>
+        <h2>Score History</h2>
+      </div>
+      <div class="history-list" id="history-list">
+        <p class="empty-state">No games yet. Play your first game!</p>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         SETTINGS SCREEN
+    ═══════════════════════════════════════ -->
+    <div class="screen" id="screen-settings">
+      <div class="screen-header">
+        <button class="btn-back" id="btn-settings-back">←</button>
+        <h2>Settings</h2>
+      </div>
+      <div class="settings-content" id="settings-content">
+
+        <div class="settings-section">
+          <div class="settings-section-title">GAMEPLAY</div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Powerups</span>
+              <span class="setting-desc">Laser, Bomb, Rearrange</span>
+            </div>
+            <label class="toggle-wrap">
+              <input type="checkbox" class="toggle" id="setting-powers" checked />
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Animations</span>
+              <span class="setting-desc">Tile slide & merge effects</span>
+            </div>
+            <label class="toggle-wrap">
+              <input type="checkbox" class="toggle" id="setting-anim" checked />
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-section" id="section-admin" style="display:none">
+          <div class="settings-section-title">⚡ DEVELOPER MODE</div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Grid Size</span>
+              <span class="setting-desc" id="setting-grid-desc">4 × 4</span>
+            </div>
+            <input type="range" id="setting-grid" min="3" max="8" value="4" step="1" />
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Laser Charges</span>
+              <span class="setting-desc" id="setting-laser-desc">2</span>
+            </div>
+            <input type="range" id="setting-laser" min="0" max="10" value="2" step="1" />
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Bomb Charges</span>
+              <span class="setting-desc" id="setting-bomb-desc">1</span>
+            </div>
+            <input type="range" id="setting-bomb" min="0" max="10" value="1" step="1" />
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Rearrange Charges</span>
+              <span class="setting-desc" id="setting-rearrange-desc">1</span>
+            </div>
+            <input type="range" id="setting-rearrange" min="0" max="10" value="1" step="1" />
+          </div>
+
+          <div class="cheat-buttons">
+            <button class="btn btn-secondary" id="btn-cheat-1024">+ Add 1024</button>
+            <button class="btn btn-danger" id="btn-cheat-clear">Clear Board</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">DATA</div>
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Reset All Data</span>
+              <span class="setting-desc">Clears scores & history</span>
+            </div>
+            <button class="btn btn-danger btn-sm" id="btn-reset">RESET</button>
+          </div>
+        </div>
+
+      </div>
+      <div class="admin-footer" id="admin-footer">Developer Mode</div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         WIN OVERLAY
+    ═══════════════════════════════════════ -->
+    <div class="overlay" id="overlay-win">
+      <div class="overlay-card">
+        <div class="win-glow">🏆</div>
+        <h2 class="win-title">2048!</h2>
+        <p class="overlay-sub">You reached the goal! Keep going?</p>
+        <div class="overlay-buttons">
+          <button class="btn btn-primary" id="btn-keep-going">Keep Going</button>
+          <button class="btn btn-secondary" id="btn-win-new">New Game</button>
+        </div>
+        <div class="win-timer-bar">
+          <div class="win-timer-fill" id="win-timer-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         GAME OVER OVERLAY
+    ═══════════════════════════════════════ -->
+    <div class="overlay" id="overlay-gameover">
+      <div class="overlay-card">
+        <h2 class="go-title">Game Over</h2>
+        <div class="go-score-wrap">
+          <span class="go-label">SCORE</span>
+          <span class="go-score" id="go-score">0</span>
+        </div>
+        <div class="go-best-wrap" id="go-best-wrap" style="display:none">
+          <span class="go-new-best">🎉 New Best!</span>
+        </div>
+        <div class="go-tags" id="go-tags"></div>
+        <div class="overlay-buttons">
+          <button class="btn btn-primary" id="btn-play-again">Play Again</button>
+          <button class="btn btn-secondary" id="btn-go-menu">Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         ADMIN CODE MODAL
+    ═══════════════════════════════════════ -->
+    <div class="overlay" id="overlay-admin">
+      <div class="overlay-card admin-card">
+        <h2>Developer Mode</h2>
+        <p class="overlay-sub">Enter admin code to unlock</p>
+        <div class="admin-dots" id="admin-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <div class="numpad" id="numpad">
+          <button class="numpad-key" data-digit="1">1</button>
+          <button class="numpad-key" data-digit="2">2</button>
+          <button class="numpad-key" data-digit="3">3</button>
+          <button class="numpad-key" data-digit="4">4</button>
+          <button class="numpad-key" data-digit="5">5</button>
+          <button class="numpad-key" data-digit="6">6</button>
+          <button class="numpad-key" data-digit="7">7</button>
+          <button class="numpad-key" data-digit="8">8</button>
+          <button class="numpad-key" data-digit="9">9</button>
+          <button class="numpad-key numpad-cancel" id="btn-admin-cancel">✕</button>
+          <button class="numpad-key" data-digit="0">0</button>
+          <button class="numpad-key numpad-del" id="btn-admin-del">⌫</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#app -->
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,700 @@
+/* ============================================================
+   main.js — Orchestrator.
+   Connects modules, manages the game loop & screen state machine.
+   ============================================================ */
+
+import { CONFIG }          from './config.js';
+import * as storage        from './storage.js';
+import * as logic          from './logic.js';
+import { state, initState, startNewGame, ageTiles, getMaxTileAge } from './state.js';
+import { evaluateTags, TAG_DEFS } from './tags.js';
+import * as renderer        from './renderer.js';
+import * as input           from './input.js';
+
+// ============================================================
+// BOOT
+// ============================================================
+
+const canvas = document.getElementById('game-canvas');
+
+initState();
+renderer.init(canvas);
+input.setup(canvas, handleSwipe, handleTap);
+
+// Resize handler
+window.addEventListener('resize', () => {
+  renderer.resize();
+});
+
+// Start game loop
+requestAnimationFrame(gameLoop);
+
+// Populate UI from stored state
+refreshMenuUI();
+setupHTMLListeners();
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+
+let animFrameId = null;
+
+function gameLoop(ts) {
+  // Animate display score chasing real score
+  if (state.displayScore < state.score) {
+    const delta = (state.score - state.displayScore);
+    state.displayScore = Math.min(state.score, state.displayScore + Math.max(1, delta * 0.15));
+  }
+
+  // Render canvas whenever on any game-adjacent screen
+  const gameScreens = ['PLAYING', 'TARGETING', 'WON', 'GAME_OVER'];
+  if (gameScreens.includes(state.screen)) {
+    renderer.render(ts);
+  }
+
+  animFrameId = requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// SCREEN MANAGEMENT
+// ============================================================
+
+// Logical screen name → HTML element suffix
+const SCREEN_EL = {
+  menu:      'menu',
+  playing:   'game',
+  targeting: 'game',
+  won:       'game',
+  gameover:  'game',
+  history:   'history',
+  settings:  'settings',
+};
+
+function showScreen(id) {
+  const key  = id.toLowerCase();
+  const elId = SCREEN_EL[key] ?? key;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(`screen-${elId}`)?.classList.add('active');
+  state.screen = id.toUpperCase();
+  // Re-measure canvas whenever game screen becomes visible
+  if (elId === 'game') setTimeout(() => renderer.resize(), 0);
+}
+
+function showOverlay(id) {
+  document.getElementById(`overlay-${id}`)?.classList.add('active');
+}
+
+function hideOverlay(id) {
+  document.getElementById(`overlay-${id}`)?.classList.remove('active');
+}
+
+// ============================================================
+// HTML BUTTON WIRING
+// ============================================================
+
+function setupHTMLListeners() {
+  // Menu
+  document.getElementById('btn-play')?.addEventListener('click', () => beginGame());
+  document.getElementById('btn-history')?.addEventListener('click', () => openHistory());
+  document.getElementById('btn-settings')?.addEventListener('click', () => openSettings());
+
+  // History
+  document.getElementById('btn-history-back')?.addEventListener('click', () => {
+    showScreen('menu');
+    refreshMenuUI();
+  });
+
+  // Settings
+  document.getElementById('btn-settings-back')?.addEventListener('click', () => {
+    showScreen('menu');
+    refreshMenuUI();
+  });
+
+  // Settings toggles
+  document.getElementById('setting-powers')?.addEventListener('change', e => {
+    storage.setSetting('powersEnabled', e.target.checked);
+    state.settings.powersEnabled = e.target.checked;
+  });
+
+  document.getElementById('setting-anim')?.addEventListener('change', e => {
+    storage.setSetting('animEnabled', e.target.checked);
+    state.settings.animEnabled = e.target.checked;
+  });
+
+  // Admin code footer (tap 5 times)
+  document.getElementById('admin-footer')?.addEventListener('click', () => {
+    if (state.adminUnlocked) return;
+    state.adminTapCount++;
+    if (state.adminTapCount >= 5) {
+      state.adminTapCount = 0;
+      openAdminModal();
+    }
+  });
+
+  // Admin range sliders
+  ['grid', 'laser', 'bomb', 'rearrange'].forEach(name => {
+    document.getElementById(`setting-${name}`)?.addEventListener('input', e => {
+      const v = parseInt(e.target.value);
+      document.getElementById(`setting-${name}-desc`).textContent =
+        name === 'grid' ? `${v} × ${v}` : String(v);
+      const keyMap = { grid: 'gridSize', laser: 'laserCharges', bomb: 'bombCharges', rearrange: 'rearrangeCharges' };
+      storage.setSetting(keyMap[name], v);
+      state.settings = storage.getSettings();
+    });
+  });
+
+  // Admin cheat buttons
+  document.getElementById('btn-cheat-1024')?.addEventListener('click', cheatAdd1024);
+  document.getElementById('btn-cheat-clear')?.addEventListener('click', cheatClearBoard);
+
+  // Data reset
+  document.getElementById('btn-reset')?.addEventListener('click', () => {
+    if (confirm('Reset all scores and history? This cannot be undone.')) {
+      storage.resetAll();
+      state.best    = 0;
+      state.history = [];
+      refreshMenuUI();
+    }
+  });
+
+  // Win overlay
+  document.getElementById('btn-keep-going')?.addEventListener('click', () => {
+    state.wonAcknowledged = true;
+    hideOverlay('win');
+    cancelWinTimer();
+    showScreen('playing');
+  });
+
+  document.getElementById('btn-win-new')?.addEventListener('click', () => {
+    hideOverlay('win');
+    cancelWinTimer();
+    beginGame();
+  });
+
+  // Game Over overlay
+  document.getElementById('btn-play-again')?.addEventListener('click', () => {
+    hideOverlay('gameover');
+    beginGame();
+  });
+
+  document.getElementById('btn-go-menu')?.addEventListener('click', () => {
+    hideOverlay('gameover');
+    state.screen = 'MENU'; // prevent game loop from rendering board
+    showScreen('menu');
+    refreshMenuUI();
+  });
+
+  // Admin numpad
+  setupAdminNumpad();
+}
+
+// ============================================================
+// MENU UI REFRESH
+// ============================================================
+
+function refreshMenuUI() {
+  state.best = storage.getBest();
+  const el = document.getElementById('menu-best');
+  if (el) el.textContent = state.best.toLocaleString();
+
+  const plays = storage.getDailyPlays();
+  const daily = document.getElementById('menu-daily');
+  if (daily) daily.textContent = plays === 0 ? '—' : `${plays} play${plays !== 1 ? 's' : ''}`;
+}
+
+// ============================================================
+// GAME FLOW
+// ============================================================
+
+function beginGame() {
+  startNewGame();
+
+  // Spawn 2 initial tiles instantly (no animation)
+  let { newGrid, spawned: s1 } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY);
+  state.grid = newGrid;
+  let { newGrid: ng2 } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY);
+  state.grid = ng2;
+
+  showScreen('playing');
+}
+
+// ============================================================
+// SWIPE / MOVE HANDLER (from input.js)
+// ============================================================
+
+function handleSwipe(direction) {
+  // Cancel targeting on swipe
+  if (state.screen === 'TARGETING') {
+    state.activePower = null;
+    state.screen      = 'PLAYING';
+    return;
+  }
+
+  if (state.screen !== 'PLAYING') return;
+  if (renderer.isAnimating()) return;
+
+  const { newGrid, moved, moves, scoreIncrement } = logic.slide(state.grid, direction);
+  if (!moved) return;
+
+  // Compute which cells got merge results (for age reset)
+  const mergeResults = moves
+    .filter(m => m.isMergeResult)
+    .map(m => [m.toRow, m.toCol]);
+
+  // Pre-update state (grid stays at pre-slide for animation start)
+  const preGrid = state.grid;
+
+  // Update score
+  state.score += scoreIncrement;
+  if (state.score > state.best) {
+    state.best    = state.score;
+    state.isNewBest = true;
+    storage.setBest(state.best);
+  }
+
+  state.totalMoves++;
+  state.turn++;
+
+  // Update tile ages
+  ageTiles(newGrid, mergeResults);
+
+  // Check win BEFORE updating grid
+  const justWon = !state.wonAcknowledged && !state.won && logic.hasWon(newGrid, CONFIG.WIN_TILE);
+
+  // Spawn new tile
+  const { newGrid: gridWithSpawn, spawned } = logic.spawnTile(newGrid, CONFIG.SPAWN_4_PROBABILITY);
+
+  // Track minimum occupied cells after spawn — requires > 2 tiles to have been on board
+  // (guards against the opening 2-tile state triggering Clean Sweep immediately)
+  if (state.totalMoves >= 2) {
+    const occ = logic.countTiles(gridWithSpawn);
+    if (occ < state.minOccupiedCells) state.minOccupiedCells = occ;
+  }
+
+  const doPostAnim = () => {
+    // Grid is already updated; check end conditions
+    if (logic.isGameOver(state.grid)) {
+      setTimeout(handleGameOver, 100);
+    } else if (justWon) {
+      handleWin();
+    }
+  };
+
+  // Update state grid AFTER snapshot for animation
+  state.grid = gridWithSpawn;
+
+  // Skip animations if disabled
+  if (state.settings.animEnabled === false) {
+    doPostAnim();
+    return;
+  }
+
+  renderer.startSlideAnim(preGrid, moves, spawned, doPostAnim);
+}
+
+// ============================================================
+// TAP HANDLER — canvas taps (powerups, quit, targeting)
+// ============================================================
+
+function handleTap(x, y) {
+  // Quit button
+  if (input.hitTestQuit(x, y) && (state.screen === 'PLAYING' || state.screen === 'TARGETING')) {
+    quitToMenu();
+    return;
+  }
+
+  if (state.screen === 'TARGETING') {
+    const cell = input.hitTestCell(x, y);
+    if (cell) {
+      applyPowerupToCell(cell.row, cell.col);
+    } else {
+      // Tapped outside board — cancel
+      state.activePower = null;
+      state.screen      = 'PLAYING';
+    }
+    return;
+  }
+
+  if (state.screen === 'PLAYING') {
+    if (renderer.isAnimating()) return;
+
+    // Arrow bumpers — fire a swipe in that direction
+    const arrowDir = input.hitTestArrow(x, y);
+    if (arrowDir) { handleSwipe(arrowDir); return; }
+
+    const power = input.hitTestPowerup(x, y);
+    if (power) handlePowerupTap(power);
+  }
+}
+
+// ============================================================
+// POWERUP LOGIC
+// ============================================================
+
+function handlePowerupTap(power) {
+  if (!state.powersEnabled) return;
+  if ((state.powers[power] ?? 0) <= 0) return;
+
+  if (state.activePower === power) {
+    // Deselect
+    state.activePower = null;
+    return;
+  }
+
+  state.activePower = power;
+
+  if (power === 'REARRANGE') {
+    // Instant apply
+    applyRearrange();
+  } else {
+    // Enter targeting mode
+    state.screen = 'TARGETING';
+  }
+}
+
+function applyPowerupToCell(row, col) {
+  const power = state.activePower;
+  if (!power) return;
+
+  let newGrid;
+  if (power === 'LASER') {
+    if (state.grid[row][col] === 0) return; // can't laser empty
+    newGrid = logic.applyLaser(state.grid, row, col);
+  } else if (power === 'BOMB') {
+    newGrid = logic.applyBomb(state.grid, row, col);
+  }
+
+  state.powers[power]--;
+  state.powersUsed.add(power);
+  if (power !== 'LASER') state.onlyLaserUsed = false;
+
+  state.grid        = newGrid;
+  state.activePower = null;
+  state.screen      = 'PLAYING';
+
+  // Check game over after powerup
+  if (logic.isGameOver(state.grid)) {
+    setTimeout(handleGameOver, 50);
+  }
+}
+
+function applyRearrange() {
+  state.grid = logic.rearrangeGrid(state.grid);
+  state.powers.REARRANGE--;
+  state.powersUsed.add('REARRANGE');
+  state.onlyLaserUsed  = false;
+  state.activePower    = null;
+
+  renderer.flashRearrange(() => {
+    if (logic.isGameOver(state.grid)) setTimeout(handleGameOver, 50);
+  });
+}
+
+// ============================================================
+// WIN
+// ============================================================
+
+let winTimerRAF  = null;
+let winTimerStart = 0;
+
+function handleWin() {
+  state.won = true;
+  showOverlay('win');
+  winTimerStart = performance.now();
+  startWinTimer();
+}
+
+function startWinTimer() {
+  const fill = document.getElementById('win-timer-fill');
+  if (!fill) return;
+
+  // Animate the shrink using CSS transition + rAF
+  function tick(ts) {
+    const elapsed  = ts - winTimerStart;
+    const progress = Math.max(0, 1 - elapsed / CONFIG.WIN_DISMISS_MS);
+    fill.style.transform = `scaleX(${progress})`;
+    fill.style.transition = 'none';
+
+    if (progress <= 0) {
+      // Auto Keep Going
+      state.wonAcknowledged = true;
+      hideOverlay('win');
+      return;
+    }
+    winTimerRAF = requestAnimationFrame(tick);
+  }
+  winTimerRAF = requestAnimationFrame(tick);
+}
+
+function cancelWinTimer() {
+  if (winTimerRAF) { cancelAnimationFrame(winTimerRAF); winTimerRAF = null; }
+}
+
+// ============================================================
+// GAME OVER
+// ============================================================
+
+function handleGameOver() {
+  const maxTile    = logic.getMaxTile(state.grid);
+  const maxTileAge = getMaxTileAge();
+
+  const tags = evaluateTags({
+    maxTile,
+    totalMoves:       state.totalMoves,
+    powersUsed:       state.powersUsed,
+    powersEnabled:    state.powersEnabled,
+    minOccupiedCells: state.minOccupiedCells,
+    maxTileAge,
+    won:              state.won,
+  });
+
+  // Save result
+  const result = {
+    date:       new Date().toISOString().split('T')[0],
+    score:      state.score,
+    maxTile,
+    totalMoves: state.totalMoves,
+    durationMs: Date.now() - state.gameStartTime,
+    tags:       tags.map(t => t.id),
+    powersUsed: [...state.powersUsed],
+  };
+  storage.addResult(result);
+  storage.incrementDailyPlays();
+  state.history = storage.getHistory();
+  state.best    = storage.getBest();
+
+  // Show overlay
+  document.getElementById('go-score').textContent = state.score.toLocaleString();
+
+  const bestWrap = document.getElementById('go-best-wrap');
+  if (bestWrap) bestWrap.style.display = state.isNewBest ? '' : 'none';
+
+  const tagsEl = document.getElementById('go-tags');
+  if (tagsEl) {
+    tagsEl.innerHTML = '';
+    tags.forEach((tag, i) => {
+      const pill = document.createElement('span');
+      pill.className = `tag-pill-lg ${tag.css}`;
+      pill.textContent = tag.label;
+      pill.style.animationDelay = `${i * CONFIG.ANIM_TAG_STAGGER}ms`;
+      tagsEl.appendChild(pill);
+    });
+  }
+
+  showOverlay('gameover');
+}
+
+// ============================================================
+// QUIT
+// ============================================================
+
+function quitToMenu() {
+  cancelWinTimer();
+  hideOverlay('win');
+  state.activePower = null;
+
+  // If a game is in progress (at least 1 move made), save it and show game over
+  if (state.totalMoves > 0) {
+    handleGameOver();
+    return;
+  }
+
+  // No moves played — go straight to menu
+  showScreen('menu');
+  refreshMenuUI();
+}
+
+// ============================================================
+// HISTORY SCREEN
+// ============================================================
+
+function openHistory() {
+  state.history = storage.getHistory();
+  renderHistoryList();
+  showScreen('history');
+}
+
+function renderHistoryList() {
+  const container = document.getElementById('history-list');
+  if (!container) return;
+
+  if (state.history.length === 0) {
+    container.innerHTML = '<p class="empty-state">No games yet. Play your first game!</p>';
+    return;
+  }
+
+  // Group by date
+  const groups = {};
+  state.history.forEach(r => {
+    if (!groups[r.date]) groups[r.date] = [];
+    groups[r.date].push(r);
+  });
+
+  let html = '';
+  Object.keys(groups)
+    .sort((a, b) => b.localeCompare(a))
+    .forEach(date => {
+      const entries = groups[date];
+      const maxScore = Math.max(...entries.map(e => e.score));
+
+      html += `<div class="history-date-group">`;
+      html += `<div class="history-date-label">${formatDate(date)}</div>`;
+
+      entries.forEach(e => {
+        const isBest = e.score === maxScore;
+        const tags   = (e.tags || []).map(id => {
+          const def = TAG_DEFS.find(d => d.id === id);
+          return def ? `<span class="tag-pill ${def.css}">${def.label}</span>` : '';
+        }).join('');
+
+        html += `
+          <div class="history-entry${isBest ? ' daily-best' : ''}">
+            <div class="he-left">
+              <span class="he-score">${e.score.toLocaleString()}</span>
+              <span class="he-meta">${e.totalMoves} moves · ${formatDuration(e.durationMs)}</span>
+            </div>
+            <div class="he-right">
+              <span class="he-max-tile">Max: ${e.maxTile}</span>
+              <div class="he-tags">${tags}${isBest ? '&nbsp;🏆' : ''}</div>
+            </div>
+          </div>`;
+      });
+
+      html += `</div>`;
+    });
+
+  container.innerHTML = html;
+}
+
+function formatDate(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' });
+}
+
+function formatDuration(ms) {
+  if (!ms) return '';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+// ============================================================
+// SETTINGS SCREEN
+// ============================================================
+
+function openSettings() {
+  const s = state.settings;
+
+  const powersEl = document.getElementById('setting-powers');
+  if (powersEl) powersEl.checked = s.powersEnabled !== false;
+
+  const animEl = document.getElementById('setting-anim');
+  if (animEl) animEl.checked = s.animEnabled !== false;
+
+  // Show admin section if unlocked
+  if (state.adminUnlocked) showAdminSection();
+
+  showScreen('settings');
+}
+
+function showAdminSection() {
+  const sec = document.getElementById('section-admin');
+  if (sec) sec.style.display = '';
+
+  const s = state.settings;
+
+  // Sync slider values
+  const gridEl = document.getElementById('setting-grid');
+  if (gridEl) { gridEl.value = s.gridSize || 4; }
+  document.getElementById('setting-grid-desc').textContent = `${s.gridSize || 4} × ${s.gridSize || 4}`;
+
+  const laserEl = document.getElementById('setting-laser');
+  if (laserEl) { laserEl.value = s.laserCharges ?? 2; }
+  document.getElementById('setting-laser-desc').textContent = String(s.laserCharges ?? 2);
+
+  const bombEl = document.getElementById('setting-bomb');
+  if (bombEl) { bombEl.value = s.bombCharges ?? 1; }
+  document.getElementById('setting-bomb-desc').textContent = String(s.bombCharges ?? 1);
+
+  const reEl = document.getElementById('setting-rearrange');
+  if (reEl) { reEl.value = s.rearrangeCharges ?? 1; }
+  document.getElementById('setting-rearrange-desc').textContent = String(s.rearrangeCharges ?? 1);
+}
+
+// ============================================================
+// ADMIN CODE / NUMPAD
+// ============================================================
+
+let adminInput = '';
+
+function openAdminModal() {
+  adminInput = '';
+  updateAdminDots();
+  showOverlay('admin');
+}
+
+function setupAdminNumpad() {
+  document.querySelectorAll('.numpad-key[data-digit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (adminInput.length >= 4) return;
+      adminInput += btn.dataset.digit;
+      updateAdminDots();
+      if (adminInput.length === 4) checkAdminCode();
+    });
+  });
+
+  document.getElementById('btn-admin-del')?.addEventListener('click', () => {
+    adminInput = adminInput.slice(0, -1);
+    updateAdminDots();
+  });
+
+  document.getElementById('btn-admin-cancel')?.addEventListener('click', () => {
+    hideOverlay('admin');
+    adminInput = '';
+  });
+}
+
+function updateAdminDots() {
+  document.querySelectorAll('#admin-dots .dot').forEach((dot, i) => {
+    dot.classList.toggle('filled', i < adminInput.length);
+    dot.classList.remove('error');
+  });
+}
+
+function checkAdminCode() {
+  if (adminInput === CONFIG.ADMIN_CODE) {
+    state.adminUnlocked = true;
+    sessionStorage.setItem('2048_admin', 'true');
+    hideOverlay('admin');
+    showAdminSection();
+  } else {
+    // Shake dots
+    document.querySelectorAll('#admin-dots .dot').forEach(d => {
+      d.classList.add('error');
+    });
+    setTimeout(() => {
+      adminInput = '';
+      updateAdminDots();
+    }, 700);
+  }
+}
+
+// ============================================================
+// CHEAT BUTTONS (admin only)
+// ============================================================
+
+function cheatAdd1024() {
+  if (state.screen !== 'PLAYING') return;
+  const empty = logic.getEmptyCells(state.grid);
+  if (empty.length === 0) return;
+  const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+  state.grid[r][c] = 1024;
+}
+
+function cheatClearBoard() {
+  if (state.screen !== 'PLAYING') return;
+  const N   = state.grid.length;
+  state.grid = Array.from({ length: N }, () => new Array(N).fill(0));
+  // Leave 1 tile so game doesn't immediately end
+  state.grid[0][0] = 2;
+}
