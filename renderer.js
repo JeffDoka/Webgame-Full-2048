@@ -206,16 +206,20 @@ function computeLayout(w, h) {
 
   const boardSize = Math.min(availH, availW, 480);
 
-  // Board origin — centred horizontally, stacked vertically from header
+  // Board origin — centred horizontally, stacked vertically from header.
+  // Cap vertical centering to 16px so portrait phones don't get a dead band above the board.
   const boardX = (w - boardSize) / 2;
   const topOfBoard = HEADER_H + MARGIN_V + BMP_TB + BMP_GAP;
-  const boardY = topOfBoard + Math.max(0, (availH - boardSize) / 2);
+  const boardY = topOfBoard + Math.max(0, Math.min((availH - boardSize) / 2, 16));
 
   const gap      = CONFIG.TILE_GAP;
   const padding  = CONFIG.BOARD_PADDING;
   const cellSize = (boardSize - 2 * padding - (N - 1) * gap) / N;
 
-  return { w, h, boardX, boardY, boardSize, N, gap, padding, cellSize, HEADER_H, POWERBAR_H };
+  // Powerbar sits directly below board + bottom bumper + margin
+  const powerBarY = boardY + boardSize + BMP_GAP + BMP_TB + MARGIN_V;
+
+  return { w, h, boardX, boardY, boardSize, N, gap, padding, cellSize, HEADER_H, POWERBAR_H, powerBarY };
 }
 
 // Cell top-left pixel
@@ -240,20 +244,23 @@ function drawBackground({ w, h }) {
 // DRAWING — Header (Score + Quit button)
 // ============================================================
 
-function drawHeader({ w, HEADER_H }) {
+function drawHeader({ w, h, HEADER_H }) {
   const H  = HEADER_H;
   const cy = H / 2;
 
-  // Quit button — left side
-  const qW = 48, qH = 30, qX = 10, qY = cy - qH / 2;
+  // Quit button — left side; shrinks to ✕ on portrait/mobile
+  const isMobile = h > w;
+  const qW = isMobile ? 28 : 48;
+  const qH = isMobile ? 28 : 30;
+  const qX = 10, qY = cy - qH / 2;
   roundRect(ctx, qX, qY, qW, qH, 7);
   ctx.fillStyle = CONFIG.COLORS.BOARD_BG;
   ctx.fill();
   ctx.fillStyle    = CONFIG.COLORS.TEXT_LIGHT;
-  ctx.font         = `bold 11px ${CONFIG.FONT_FAMILY}`;
+  ctx.font         = `bold ${isMobile ? 14 : 11}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('QUIT', qX + qW / 2, qY + qH / 2);
+  ctx.fillText(isMobile ? '✕' : 'QUIT', qX + qW / 2, qY + qH / 2);
   hitAreas.quitBtn = { x: qX, y: qY, w: qW, h: qH };
 
   // Score boxes — centred
@@ -504,11 +511,11 @@ function drawTile(x, y, size, value, scale = 1, alpha = 1) {
 // ============================================================
 
 function drawPowerupBar(layout) {
-  const { boardX, boardSize, h, POWERBAR_H } = layout;
+  const { boardX, boardSize, POWERBAR_H, powerBarY } = layout;
   const barW = boardSize;
   const barH = Math.min(70, POWERBAR_H - 8);
   const barX = boardX;
-  const barY = h - POWERBAR_H - 8 + (POWERBAR_H - barH) / 2;
+  const barY = powerBarY + (POWERBAR_H - barH) / 2;
 
   // Expose bar rect for drag detection in input.js
   hitAreas.barRect = { x: barX, y: barY, w: barW, h: barH };

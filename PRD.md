@@ -1,7 +1,7 @@
 # PRD: 2048 Web Game — "The Master Spec"
 
-**Version:** 6.0
-**Date:** 2026-03-16
+**Version:** 6.1
+**Date:** 2026-03-17
 **Author:** Jeff Boss
 **Status:** Approved / Finalized
 
@@ -182,7 +182,19 @@ Tags are evaluated in `tags.js` at the moment of Game Over.
 - **Text:** Vertically and horizontally centered using `ctx.textAlign = 'center'` and `ctx.textBaseline = 'middle'`.
 - **Scaling:** For numbers > 999, reduce font size by 20% per digit.
 
-### 8.2 Powerup Bar
+### 8.2 Portrait Layout
+- In portrait orientation (h > w), vertical centering of the board is capped at 16px to prevent a dead band of empty space appearing above the board.
+- The Quit button shrinks from the full `QUIT` label to a compact `✕` glyph when in portrait, preserving header space.
+
+### 8.3 Game Discovery Strip
+- A vertically-scrollable strip that appears below the board when the player first reaches a tile value that maps to an entry in `CONFIG.MEDIA_CATALOG`.
+- Positioned and sized to match the board width exactly — never wider.
+- Floats 8px above the screen bottom with rounded corners and a subtle drop shadow.
+- Each row contains a square thumbnail and game title. Scroll to reveal all discoveries.
+- Can be toggled on/off via Settings → Discovery Strip.
+- Persists across sessions: discovered tiles are stored in `localStorage` (key `2048_discoveries`).
+
+### 8.4 Powerup Bar
 - Located below the board. Drawn on canvas.
 - Glassmorphism effect: `rgba(255,255,255,0.1)` with a soft rounded-rect background.
 - **Scrollable:** The bar is horizontally drag-scrollable to accommodate 5+ powerups. Scroll indicator (track + thumb) shown when content overflows.
@@ -190,13 +202,13 @@ Tags are evaluated in `tags.js` at the moment of Game Over.
 - **Targeting Visual:** When active, the board gets a `rgba(0,0,0,0.5)` overlay. Valid target cells pulse with a white stroke.
 - **Power Drop Toast:** When a drop is awarded, a pill-shaped toast floats up from the board centre and fades out over ~1.8s.
 
-### 8.3 Tag Tooltips
+### 8.5 Tag Tooltips
 - Tag pills in the Game Over overlay and History screen are tappable.
 - First tap reveals a dark tooltip above the pill describing what earned it (e.g., "No powerups used this game").
 - Second tap (or tapping a different pill) dismisses the tooltip.
 - CSS-driven: tooltip text sourced from `data-tooltip` attribute, toggled via `.tooltip-open` class.
 
-### 8.3 Win Screen
+### 8.6 Win Screen
 - Full-screen overlay.
 - Text: "2048" in large bold gold.
 - **Timer Bar:** 4px high, pinned to bottom, shrinks from 100% to 0% over 5 seconds.
@@ -219,7 +231,20 @@ Tags are evaluated in `tags.js` at the moment of Game Over.
 
 ## 10. Settings & Admin Menu
 
-### 10.1 The "6673" Unlock
+### 10.1 Settings Parameters
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `powersEnabled` | boolean | true | Enable/disable the powerup system |
+| `animEnabled` | boolean | true | Enable/disable tile slide & merge animations |
+| `baseTile` | number | 3 | Starting tile value (2–5); win tile = baseTile × 1024 |
+| `discoveryPanel` | boolean | true | Show/hide the game discovery strip below the board |
+| `gridSize` | number | 4 | Grid dimension N×N (admin only, 3–8) |
+| `laserCharges` | number | 2 | Starting laser charges (admin only) |
+| `bombCharges` | number | 1 | Starting bomb charges (admin only) |
+| `rearrangeCharges` | number | 1 | Starting rearrange charges (admin only) |
+
+### 10.2 The "6673" Unlock
 - Settings menu displays a "Developer Mode" footer.
 - Tapping footer 5 times opens a numpad/text input.
 - Correct code `6673` sets `sessionStorage.admin_unlocked = true`.

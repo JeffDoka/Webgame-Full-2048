@@ -15,7 +15,7 @@ import * as input           from './input.js';
 // DISCOVERY SYSTEM
 // ============================================================
 
-const DISC_PANEL_H = 56; // must match .discovery-panel.visible height in CSS
+const DISC_PANEL_H = 64; // 56px panel height + 8px bottom offset (see .discovery-panel CSS)
 
 // Preload all catalog images on startup so tiles show art immediately
 function preloadAllMedia() {
@@ -52,6 +52,7 @@ function checkDiscoveries() {
 }
 
 function renderDiscoveryPanel(highlightValues = []) {
+  if (state.settings.discoveryPanel === false) return;
   const panel = document.getElementById('discovery-panel');
   const inner = document.getElementById('discovery-inner');
   if (!panel || !inner) return;
@@ -65,6 +66,7 @@ function renderDiscoveryPanel(highlightValues = []) {
     panel.classList.add('visible');
     renderer.setDiscoveryPanelH(DISC_PANEL_H);
     renderer.resize();
+    syncDiscoveryPanelLayout();
   }
 
   inner.innerHTML = '';
@@ -98,7 +100,7 @@ function renderDiscoveryPanel(highlightValues = []) {
       const idx = discovered.indexOf(lastNew);
       if (idx >= 0) {
         const cardEls = inner.querySelectorAll('.disc-card');
-        cardEls[idx]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        cardEls[idx]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }, 400);
   }
@@ -114,8 +116,19 @@ function showDiscoveryToast(title, val) {
   setTimeout(() => toast.remove(), 3000);
 }
 
+// Align the discovery panel left/width to match the game board
+function syncDiscoveryPanelLayout() {
+  const panel = document.getElementById('discovery-panel');
+  if (!panel) return;
+  const { boardX, boardSize } = renderer.getLayout();
+  panel.style.left  = boardX + 'px';
+  panel.style.width = boardSize + 'px';
+  panel.style.right = 'auto';
+}
+
 // Restore panel on session start (if tiles already discovered)
 function restoreDiscoveryPanel() {
+  if (state.settings.discoveryPanel === false) return;
   const panel = document.getElementById('discovery-panel');
   if (!panel) return;
   const discovered = [...state.discoveredTiles].filter(v => CONFIG.MEDIA_CATALOG[v]);
@@ -123,6 +136,7 @@ function restoreDiscoveryPanel() {
     panel.classList.add('visible');
     renderer.setDiscoveryPanelH(DISC_PANEL_H);
     renderDiscoveryPanel();
+    syncDiscoveryPanelLayout();
   }
 }
 
@@ -142,6 +156,7 @@ preloadAllMedia();
 // Resize handler
 window.addEventListener('resize', () => {
   renderer.resize();
+  syncDiscoveryPanelLayout();
 });
 
 // Start game loop
@@ -198,7 +213,7 @@ function showScreen(id) {
   document.getElementById(`screen-${elId}`)?.classList.add('active');
   state.screen = id.toUpperCase();
   // Re-measure canvas whenever game screen becomes visible
-  if (elId === 'game') setTimeout(() => renderer.resize(), 0);
+  if (elId === 'game') setTimeout(() => { renderer.resize(); syncDiscoveryPanelLayout(); }, 0);
 }
 
 function showOverlay(id) {
@@ -240,6 +255,22 @@ function setupHTMLListeners() {
   document.getElementById('setting-anim')?.addEventListener('change', e => {
     storage.setSetting('animEnabled', e.target.checked);
     state.settings.animEnabled = e.target.checked;
+  });
+
+  document.getElementById('setting-discovery')?.addEventListener('change', e => {
+    const show = e.target.checked;
+    storage.setSetting('discoveryPanel', show);
+    state.settings.discoveryPanel = show;
+    const panel = document.getElementById('discovery-panel');
+    if (!panel) return;
+    if (!show) {
+      panel.classList.remove('visible');
+      renderer.setDiscoveryPanelH(0);
+      renderer.resize();
+      syncDiscoveryPanelLayout();
+    } else {
+      restoreDiscoveryPanel();
+    }
   });
 
   document.getElementById('setting-base')?.addEventListener('input', e => {
@@ -912,6 +943,9 @@ function openSettings() {
 
   const animEl = document.getElementById('setting-anim');
   if (animEl) animEl.checked = s.animEnabled !== false;
+
+  const discEl = document.getElementById('setting-discovery');
+  if (discEl) discEl.checked = s.discoveryPanel !== false;
 
   const baseEl = document.getElementById('setting-base');
   const base   = s.baseTile || CONFIG.BASE_TILE;

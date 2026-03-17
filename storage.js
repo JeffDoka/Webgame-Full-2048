@@ -60,6 +60,7 @@ const DEFAULT_SETTINGS = {
   laserCharges:     2,
   bombCharges:      1,
   rearrangeCharges: 1,
+  discoveryPanel:   true, // show game discovery strip below the board
 };
 
 export function getSettings() {

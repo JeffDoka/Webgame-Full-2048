@@ -815,15 +815,17 @@ input[type="range"] {
    ============================================================ */
 .discovery-panel {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: 8px;
+  left: 0;         /* overridden by JS to match board width */
+  right: 0;        /* overridden by JS */
   height: 0;
   overflow: hidden;
-  background: rgba(65, 72, 51, 0.92);   /* ebony, slightly translucent */
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-top: 1px solid rgba(237,224,212,0.10);
+  background: rgba(44, 49, 32, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(237,224,212,0.14);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
   transition: height 320ms cubic-bezier(0.34, 1.1, 0.64, 1);
   z-index: 5;
 }
@@ -834,14 +836,14 @@ input[type="range"] {
 
 .discovery-inner {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 8px;
   height: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;          /* hide scrollbar — swipe to scroll */
 }
@@ -849,8 +851,10 @@ input[type="range"] {
 
 /* Individual discovery chip — tiny square thumb + title */
 .disc-card {
-  flex: 0 0 auto;
+  flex: 0 0 40px;
   height: 40px;
+  width: 100%;
+  box-sizing: border-box;
   scroll-snap-align: start;
   display: flex;
   flex-direction: row;
@@ -875,8 +879,8 @@ input[type="range"] {
 }
 
 @keyframes discSlideIn {
-  from { opacity: 0; transform: translateX(16px) scale(0.9); }
-  to   { opacity: 1; transform: translateX(0)    scale(1);   }
+  from { opacity: 0; transform: translateY(10px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);   }
 }
 
 /* Tiny square thumbnail */
@@ -894,7 +898,8 @@ input[type="range"] {
   font-weight: 700;
   color: var(--almond);
   letter-spacing: 0.2px;
-  max-width: 120px;
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
