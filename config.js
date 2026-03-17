@@ -37,7 +37,8 @@ export const CONFIG = {
   },
 
   // ---- Mechanics ----
-  WIN_TILE:           2048,
+  BASE_TILE:          3,    // starting tile value (2–5); win tile = BASE_TILE × 1024
+  WIN_TILE:           2048, // legacy fallback (overridden by state.winTile at runtime)
   SPAWN_4_PROBABILITY: 0.10,
   WIN_DISMISS_MS:     5000,
 
@@ -69,12 +70,30 @@ export const CONFIG = {
   TORTOISE_MOVES:  300,
   SPEEDRUN_MOVES:  100,
 
+  // ---- Tag Score Bonuses ----
+  // multiply: stacked multiplier applied to base score before flat adds
+  // add: flat points added after all multipliers
+  // label: shown in score breakdown on game-over screen
+  TAG_BONUSES: {
+    purist:     { multiply: 2,    label: '×2'    },  // no powerups → double final score
+    summit:     { add: 1000,      label: '+1,000' }, // reached win tile
+    overclock:  { multiply: 1.5,  label: '×1.5'  }, // went past win tile
+    speedrun:   { multiply: 1.5,  label: '×1.5'  }, // hit win tile fast
+    fossil:     { add: 500,       label: '+500'  },  // ancient tile survived
+    cleansweep: { add: 800,       label: '+800'  },  // board nearly cleared
+    surgeon:    { multiply: 1.25, label: '×1.25' }, // laser-only run
+    tortoise:   { add: 300,       label: '+300'  },  // marathon game
+  },
+
   // ---- Security ----
   ADMIN_CODE: '6673',
 };
 
-// Tile color lookup: handles 4096 and above
-export function getTileColors(value) {
-  if (CONFIG.COLORS.TILES[value]) return CONFIG.COLORS.TILES[value];
-  return CONFIG.COLORS.TILES['4096+'];
+// Tile color lookup — maps by tier so any base tile uses the standard palette.
+// tier = log2(value / baseTile): 3→tier 0 (color of "2"), 6→tier 1 ("4"), etc.
+export function getTileColors(value, baseTile = 2) {
+  const TIER_KEYS = [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, '4096+'];
+  const tier = Math.max(0, Math.round(Math.log2(value / baseTile)));
+  const key  = tier < TIER_KEYS.length ? TIER_KEYS[tier] : '4096+';
+  return CONFIG.COLORS.TILES[key] || CONFIG.COLORS.TILES['4096+'];
 }

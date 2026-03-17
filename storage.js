@@ -56,6 +56,7 @@ const DEFAULT_SETTINGS = {
   powersEnabled:    true,
   animEnabled:      true,
   gridSize:         4,
+  baseTile:         3,  // starting tile value (2–5); win tile = baseTile × 1024
   laserCharges:     2,
   bombCharges:      1,
   rearrangeCharges: 1,

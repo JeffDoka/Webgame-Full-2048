@@ -422,7 +422,8 @@ function drawSlide(layout, t) {
 // ============================================================
 
 function drawTile(x, y, size, value, scale = 1, alpha = 1) {
-  const colors = getTileColors(value);
+  const baseTile = state.settings.baseTile || 2;
+  const colors   = getTileColors(value, baseTile);
 
   ctx.save();
   ctx.globalAlpha = alpha;

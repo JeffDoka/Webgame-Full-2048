@@ -125,12 +125,13 @@ export function slide(grid, direction) {
 }
 
 // ---- Spawn a random tile on an empty cell ----
-export function spawnTile(grid, prob4 = 0.10) {
+// base: starting tile value (e.g. 3); spawns base or base*2 (weighted by prob4)
+export function spawnTile(grid, prob4 = 0.10, base = 2) {
   const empty = getEmptyCells(grid);
   if (empty.length === 0) return { newGrid: grid, spawned: null };
 
   const [r, c] = empty[Math.floor(Math.random() * empty.length)];
-  const value  = Math.random() < prob4 ? 4 : 2;
+  const value  = Math.random() < prob4 ? base * 2 : base;
   const newGrid = grid.map(row => [...row]);
   newGrid[r][c] = value;
 

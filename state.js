@@ -27,6 +27,7 @@ export const state = {
   tileAges: [],
 
   // ---- Win state ----
+  winTile:         2048,  // computed at startNewGame: settings.baseTile × 1024
   won:             false,
   wonAcknowledged: false, // set true when user clicks Keep Going
 
@@ -67,7 +68,9 @@ export function initState() {
 
 // ---- Start a new game ----
 export function startNewGame() {
-  const N = state.settings.gridSize || CONFIG.GRID_SIZE;
+  const N        = state.settings.gridSize || CONFIG.GRID_SIZE;
+  const baseTile = state.settings.baseTile  || CONFIG.BASE_TILE;
+  state.winTile  = baseTile * 1024;
 
   state.grid      = Array.from({ length: N }, () => new Array(N).fill(0));
   state.tileAges  = Array.from({ length: N }, () => new Array(N).fill(0));
@@ -86,6 +89,11 @@ export function startNewGame() {
     LASER:     state.settings.laserCharges     ?? CONFIG.POWERS.LASER,
     BOMB:      state.settings.bombCharges      ?? CONFIG.POWERS.BOMB,
     REARRANGE: state.settings.rearrangeCharges ?? CONFIG.POWERS.REARRANGE,
+    DOUBLE:    CONFIG.POWERS.DOUBLE,
+    UNDO:      CONFIG.POWERS.UNDO,
+    FREEZE:    CONFIG.POWERS.FREEZE,
+    UPGRADE:   CONFIG.POWERS.UPGRADE,
+    SWAP:      CONFIG.POWERS.SWAP,
   };
   state.powersUsed    = new Set();
   state.activePower   = null;

@@ -93,6 +93,14 @@
               <input type="checkbox" class="toggle" id="setting-anim" checked />
             </label>
           </div>
+
+          <div class="setting-row">
+            <div class="setting-label">
+              <span>Base Tile</span>
+              <span class="setting-desc" id="setting-base-desc">3  ·  goal: 3,072</span>
+            </div>
+            <input type="range" id="setting-base" min="2" max="5" value="3" step="1" />
+          </div>
         </div>
 
         <div class="settings-section" id="section-admin" style="display:none">
@@ -178,6 +186,7 @@
         <div class="go-score-wrap">
           <span class="go-label">SCORE</span>
           <span class="go-score" id="go-score">0</span>
+          <div class="go-score-breakdown" id="go-score-breakdown" style="display:none"></div>
         </div>
         <div class="go-best-wrap" id="go-best-wrap" style="display:none">
           <span class="go-new-best">🎉 New Best!</span>

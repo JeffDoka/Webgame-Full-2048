@@ -121,6 +121,14 @@ function setupHTMLListeners() {
     state.settings.animEnabled = e.target.checked;
   });
 
+  document.getElementById('setting-base')?.addEventListener('input', e => {
+    const v = parseInt(e.target.value);
+    const goal = v * 1024;
+    document.getElementById('setting-base-desc').textContent = `${v}  ·  goal: ${goal.toLocaleString()}`;
+    storage.setSetting('baseTile', v);
+    state.settings = storage.getSettings();
+  });
+
   // Admin code footer (tap 5 times)
   document.getElementById('admin-footer')?.addEventListener('click', () => {
     if (state.adminUnlocked) return;
@@ -208,11 +216,12 @@ function refreshMenuUI() {
 
 function beginGame() {
   startNewGame();
+  const base = state.settings.baseTile || CONFIG.BASE_TILE;
 
   // Spawn 2 initial tiles instantly (no animation)
-  let { newGrid, spawned: s1 } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY);
+  let { newGrid } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY, base);
   state.grid = newGrid;
-  let { newGrid: ng2 } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY);
+  let { newGrid: ng2 } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY, base);
   state.grid = ng2;
 
   showScreen('playing');
@@ -277,16 +286,17 @@ function handleSwipe(direction) {
   ageTiles(newGrid, mergeResults);
 
   // Check win BEFORE updating grid
-  const justWon = !state.wonAcknowledged && !state.won && logic.hasWon(newGrid, CONFIG.WIN_TILE);
+  const justWon = !state.wonAcknowledged && !state.won && logic.hasWon(newGrid, state.winTile);
 
   // Spawn new tile (skip if FREEZE powerup consumed this move)
+  const base = state.settings.baseTile || CONFIG.BASE_TILE;
   let gridWithSpawn, spawned;
   if (state.freezeNextSpawn) {
     state.freezeNextSpawn = false;
     gridWithSpawn = newGrid;
     spawned = null;
   } else {
-    const spawnResult = logic.spawnTile(newGrid, CONFIG.SPAWN_4_PROBABILITY);
+    const spawnResult = logic.spawnTile(newGrid, CONFIG.SPAWN_4_PROBABILITY, base);
     gridWithSpawn = spawnResult.newGrid;
     spawned       = spawnResult.spawned;
   }
@@ -444,7 +454,7 @@ function applyPowerupToCell(row, col) {
   state.screen      = 'PLAYING';
 
   // Check win after DOUBLE (could create 2048)
-  if (!state.wonAcknowledged && !state.won && logic.hasWon(state.grid, CONFIG.WIN_TILE)) {
+  if (!state.wonAcknowledged && !state.won && logic.hasWon(state.grid, state.winTile)) {
     handleWin();
     return;
   }
@@ -501,7 +511,7 @@ function applyUpgrade() {
   state.activePower   = null;
 
   // Check win after UPGRADE (could create 2048)
-  if (!state.wonAcknowledged && !state.won && logic.hasWon(state.grid, CONFIG.WIN_TILE)) {
+  if (!state.wonAcknowledged && !state.won && logic.hasWon(state.grid, state.winTile)) {
     handleWin();
     return;
   }
@@ -569,10 +579,36 @@ function handleGameOver() {
     won:              state.won,
   });
 
+  // ---- Compute tag score bonuses ----
+  let totalMultiplier = 1;
+  let totalAdd        = 0;
+  const bonusLines    = [];
+  tags.forEach(tag => {
+    const bonus = CONFIG.TAG_BONUSES[tag.id];
+    if (!bonus) return;
+    if (bonus.multiply) {
+      totalMultiplier *= bonus.multiply;
+      bonusLines.push(`${tag.label} ${bonus.label}`);
+    }
+    if (bonus.add) {
+      totalAdd += bonus.add;
+      bonusLines.push(`${tag.label} ${bonus.label}`);
+    }
+  });
+  const baseScore  = state.score;
+  const finalScore = Math.round(baseScore * totalMultiplier) + totalAdd;
+
+  // Update best if finalScore beats stored best
+  if (finalScore > storage.getBest()) {
+    state.best    = finalScore;
+    state.isNewBest = true;
+    storage.setBest(finalScore);
+  }
+
   // Save result
   const result = {
     date:       new Date().toISOString().split('T')[0],
-    score:      state.score,
+    score:      finalScore,
     maxTile,
     totalMoves: state.totalMoves,
     durationMs: Date.now() - state.gameStartTime,
@@ -585,7 +621,19 @@ function handleGameOver() {
   state.best    = storage.getBest();
 
   // Show overlay
-  document.getElementById('go-score').textContent = state.score.toLocaleString();
+  document.getElementById('go-score').textContent = finalScore.toLocaleString();
+
+  // Score breakdown (only when bonuses are active)
+  const breakdownEl = document.getElementById('go-score-breakdown');
+  if (breakdownEl) {
+    if (bonusLines.length > 0) {
+      breakdownEl.innerHTML = `<span class="go-base-score">Base: ${baseScore.toLocaleString()}</span>`
+        + bonusLines.map(l => `<span class="go-bonus-line">${l}</span>`).join('');
+      breakdownEl.style.display = '';
+    } else {
+      breakdownEl.style.display = 'none';
+    }
+  }
 
   const bestWrap = document.getElementById('go-best-wrap');
   if (bestWrap) bestWrap.style.display = state.isNewBest ? '' : 'none';
@@ -734,6 +782,12 @@ function openSettings() {
 
   const animEl = document.getElementById('setting-anim');
   if (animEl) animEl.checked = s.animEnabled !== false;
+
+  const baseEl = document.getElementById('setting-base');
+  const base   = s.baseTile || CONFIG.BASE_TILE;
+  if (baseEl) { baseEl.value = base; }
+  const baseDesc = document.getElementById('setting-base-desc');
+  if (baseDesc) baseDesc.textContent = `${base}  ·  goal: ${(base * 1024).toLocaleString()}`;
 
   // Show admin section if unlocked
   if (state.adminUnlocked) showAdminSection();
