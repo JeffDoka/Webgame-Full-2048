@@ -56,6 +56,10 @@ export const state = {
 
   // ---- History ----
   history: [],
+
+  // ---- Media Discovery (persistent across games) ----
+  // Set of tile values the player has ever seen — drives the discovery panel
+  discoveredTiles: new Set(),
 };
 
 // ---- Initialise from localStorage (call once at startup) ----
@@ -64,6 +68,8 @@ export function initState() {
   state.settings    = storage.getSettings();
   state.history     = storage.getHistory();
   state.adminUnlocked = sessionStorage.getItem('2048_admin') === 'true';
+  // Load persistent discoveries (survive across sessions)
+  state.discoveredTiles = new Set(storage.getDiscoveredTiles());
 }
 
 // ---- Start a new game ----

@@ -44,6 +44,20 @@ export let hitAreas = {
   powerDropChoices: [],   // [{name, x,y,w,h}]   — 3-choice picker buttons
 };
 
+// ---- Discovery panel reserved height (DOM element below canvas) ----
+let discoveryPanelH = 0;
+export function setDiscoveryPanelH(h) { discoveryPanelH = h; }
+
+// ---- Preloaded media images (tile backgrounds + discovery cards) ----
+// Populated lazily: mediaImages[tileValue] = HTMLImageElement
+const mediaImages = {};
+export function preloadMediaImage(value, src) {
+  if (mediaImages[value]) return;
+  const img = new Image();
+  img.src = src;
+  mediaImages[value] = img;
+}
+
 // ---- Powerup bar scroll state ----
 let barScrollX   = 0;
 const BTN_W      = 82;   // fixed button width regardless of board width
@@ -172,6 +186,9 @@ const BMP_GAP = 5;    // gap between bumper and board edge
 
 function computeLayout(w, h) {
   const N = state.grid.length || CONFIG.GRID_SIZE;
+
+  // Reserve space for HTML discovery panel at bottom
+  h = h - discoveryPanelH;
 
   // Fixed chrome heights
   const HEADER_H   = 56;
@@ -449,6 +466,22 @@ function drawTile(x, y, size, value, scale = 1, alpha = 1) {
   ctx.fill();
 
   ctx.shadowBlur = 0;
+
+  // Faded media art background (if image loaded)
+  const img = mediaImages[value];
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.18;
+    ctx.beginPath();
+    roundRect(ctx, x, y, size, size, CONFIG.TILE_RADIUS);
+    ctx.clip();
+    // Cover-fit: fill the tile square
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const scale2 = Math.max(size / iw, size / ih);
+    const dw = iw * scale2, dh = ih * scale2;
+    ctx.drawImage(img, x - (dw - size) / 2, y - (dh - size) / 2, dw, dh);
+    ctx.restore();
+  }
 
   // Text
   const digits = String(value).length;

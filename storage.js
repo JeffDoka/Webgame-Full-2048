@@ -88,6 +88,17 @@ export function incrementDailyPlays() {
   return count;
 }
 
+// ---- Discovered Tiles (media catalog) ----
+const KEY_DISCOVERED = '2048_discovered';
+
+export function getDiscoveredTiles() {
+  return safeGet(KEY_DISCOVERED, []);
+}
+
+export function setDiscoveredTiles(arr) {
+  safeSet(KEY_DISCOVERED, arr);
+}
+
 // ---- Reset All ----
 export function resetAll() {
   try {

@@ -12,28 +12,44 @@ export const CONFIG = {
   BOARD_RADIUS: 16,
   FONT_FAMILY: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
 
-  // ---- Colors (Original 2048 Palette) ----
+  // ---- Colors (Channel 3 Palette: Coffee · Lion · Almond · Reseda · Ebony) ----
   COLORS: {
-    BOARD_BG:   '#bbada0',
-    CELL_EMPTY: '#cdc1b4',
-    TEXT_DARK:  '#776e65',
-    TEXT_LIGHT: '#f9f6f2',
-    BG:         '#faf8ef',
-    SCORE_BG:   '#bbada0',
+    BOARD_BG:   '#414833',  // Ebony
+    CELL_EMPTY: '#656D4A',  // Reseda green
+    TEXT_DARK:  '#414833',  // Ebony
+    TEXT_LIGHT: '#EDE0D4',  // Almond
+    BG:         '#EDE0D4',  // Almond
+    SCORE_BG:   '#414833',  // Ebony
     TILES: {
-      2:      { bg: '#eee4da', text: '#776e65' },
-      4:      { bg: '#ede0c8', text: '#776e65' },
-      8:      { bg: '#f2b179', text: '#f9f6f2' },
-      16:     { bg: '#f59563', text: '#f9f6f2' },
-      32:     { bg: '#f67c5f', text: '#f9f6f2' },
-      64:     { bg: '#f65e3b', text: '#f9f6f2' },
-      128:    { bg: '#edcf72', text: '#f9f6f2', glow: 'rgba(237,207,114,0.55)', glowRadius: 14 },
-      256:    { bg: '#edcc61', text: '#f9f6f2', glow: 'rgba(237,204,97,0.60)',  glowRadius: 18 },
-      512:    { bg: '#edc850', text: '#f9f6f2', glow: 'rgba(237,200,80,0.65)',  glowRadius: 22 },
-      1024:   { bg: '#edc53f', text: '#f9f6f2', glow: 'rgba(237,197,63,0.70)',  glowRadius: 26 },
-      2048:   { bg: '#edc22e', text: '#f9f6f2', glow: 'rgba(237,194,46,0.80)',  glowRadius: 32 },
-      '4096+':{ bg: '#3c3a32', text: '#f9f6f2', glow: 'rgba(60,58,50,0.5)',     glowRadius: 20 },
+      2:      { bg: '#EDE0D4', text: '#414833' },  // Almond    — tier 0
+      4:      { bg: '#A68A64', text: '#EDE0D4' },  // Lion      — tier 1
+      8:      { bg: '#7F5539', text: '#EDE0D4' },  // Coffee    — tier 2
+      16:     { bg: '#656D4A', text: '#EDE0D4' },  // Reseda    — tier 3
+      32:     { bg: '#414833', text: '#EDE0D4' },  // Ebony     — tier 4
+      64:     { bg: '#2d3320', text: '#EDE0D4' },  // Deep ebony — tier 5
+      128:    { bg: '#edcf72', text: '#EDE0D4', glow: 'rgba(237,207,114,0.55)', glowRadius: 14 },
+      256:    { bg: '#edcc61', text: '#EDE0D4', glow: 'rgba(237,204,97,0.60)',  glowRadius: 18 },
+      512:    { bg: '#edc850', text: '#EDE0D4', glow: 'rgba(237,200,80,0.65)',  glowRadius: 22 },
+      1024:   { bg: '#edc53f', text: '#EDE0D4', glow: 'rgba(237,197,63,0.70)',  glowRadius: 26 },
+      2048:   { bg: '#edc22e', text: '#EDE0D4', glow: 'rgba(237,194,46,0.80)',  glowRadius: 32 },
+      '4096+':{ bg: '#7F5539', text: '#EDE0D4', glow: 'rgba(127,85,57,0.55)',   glowRadius: 20 },
     },
+  },
+
+  // ---- Media Catalog — maps tile values → game/media entries ----
+  // Each entry: { title, img (path), desc, url }
+  // Tiles show a faded version of the art; discoveries appear in the panel below the board.
+  MEDIA_CATALOG: {
+    3:    { title: 'TimeClimb',               img: 'assets/media/timeclimb.avif',              desc: 'Climb the clock — a fast-paced time-looping arcade game.',                   url: 'https://channel3.gg' },
+    6:    { title: 'Crystal Chaos',           img: 'assets/media/crystal-chaos.png',           desc: 'Match crystals, shatter expectations. Satisfying combo puzzler.',            url: 'https://channel3.gg' },
+    12:   { title: 'Hexa Puzzle Saga',        img: 'assets/media/hexa-puzzle-saga.png',        desc: 'Hexagonal puzzle battles that twist your mind one layer at a time.',         url: 'https://channel3.gg' },
+    24:   { title: 'Tiny Restorations VR',    img: 'assets/media/tiny-restorations-vr.png',    desc: 'Restore miniature worlds by hand. A meditative VR experience.',              url: 'https://channel3.gg' },
+    48:   { title: 'The Builder',             img: 'assets/media/the-builder.avif',            desc: 'Build, iterate, ship. A calm city-construction game with no failure state.', url: 'https://channel3.gg' },
+    96:   { title: 'The Lost Library',        img: 'assets/media/the-lost-library.avif',       desc: 'An ancient library that rearranges itself. Exploration + mystery.',          url: 'https://channel3.gg' },
+    192:  { title: 'Departures: Running Wild',img: 'assets/media/departures-running-wild.jpg', desc: 'A road-trip adventure with no destination and everything to see.',           url: 'https://channel3.gg' },
+    384:  { title: 'The Conference',          img: 'assets/media/the-conference.jpg',          desc: 'Navigate the politics of a single endless meeting. A workplace satire.',     url: 'https://channel3.gg' },
+    768:  { title: 'The Distributor',         img: 'assets/media/the-distributor.jpg',         desc: 'Supply chain strategy meets noir thriller. Every shipment has a story.',     url: 'https://channel3.gg' },
+    1536: { title: 'Worldseekers',            img: 'assets/media/worldseekers.png',            desc: 'Open-world exploration RPG spanning infinite procedurally generated worlds.', url: 'https://channel3.gg' },
   },
 
   // ---- Mechanics ----

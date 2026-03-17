@@ -12,6 +12,126 @@ import * as renderer        from './renderer.js';
 import * as input           from './input.js';
 
 // ============================================================
+// DISCOVERY SYSTEM
+// ============================================================
+
+const DISC_PANEL_H = 148; // must match .discovery-panel.visible height in CSS
+
+// Preload all catalog images on startup so tiles show art immediately
+function preloadAllMedia() {
+  Object.entries(CONFIG.MEDIA_CATALOG).forEach(([val, entry]) => {
+    renderer.preloadMediaImage(Number(val), entry.img);
+  });
+}
+
+// Check grid for newly discovered catalog tiles — call after every grid change
+function checkDiscoveries() {
+  const catalogValues = Object.keys(CONFIG.MEDIA_CATALOG).map(Number);
+  const newOnes = [];
+
+  state.grid.forEach(row => row.forEach(v => {
+    if (v > 0 && catalogValues.includes(v) && !state.discoveredTiles.has(v)) {
+      state.discoveredTiles.add(v);
+      newOnes.push(v);
+    }
+  }));
+
+  if (newOnes.length === 0) return;
+
+  // Persist
+  storage.setDiscoveredTiles([...state.discoveredTiles]);
+
+  // Build / update panel cards
+  renderDiscoveryPanel(newOnes);
+
+  // Show DOM toast for each new discovery
+  newOnes.forEach((v, i) => {
+    const entry = CONFIG.MEDIA_CATALOG[v];
+    setTimeout(() => showDiscoveryToast(entry.title, v), i * 600);
+  });
+}
+
+function renderDiscoveryPanel(highlightValues = []) {
+  const panel = document.getElementById('discovery-panel');
+  const inner = document.getElementById('discovery-inner');
+  if (!panel || !inner) return;
+
+  // Rebuild all cards sorted by tile value ascending
+  const discovered = [...state.discoveredTiles].sort((a, b) => a - b);
+  if (discovered.length === 0) return;
+
+  // Show panel if hidden
+  if (!panel.classList.contains('visible')) {
+    panel.classList.add('visible');
+    renderer.setDiscoveryPanelH(DISC_PANEL_H);
+    renderer.resize();
+  }
+
+  inner.innerHTML = '';
+  discovered.forEach(val => {
+    const entry = CONFIG.MEDIA_CATALOG[val];
+    if (!entry) return;
+
+    const isNew = highlightValues.includes(val);
+    const card  = document.createElement('a');
+    card.className    = `disc-card${isNew ? ' is-new' : ''}`;
+    card.href         = entry.url;
+    card.target       = '_blank';
+    card.rel          = 'noopener noreferrer';
+    card.style.animationDelay = isNew ? '0ms' : 'none';
+    card.style.animation = isNew ? '' : 'none';
+
+    card.innerHTML = `
+      <img class="disc-thumb" src="${entry.img}" alt="${entry.title}" loading="lazy" />
+      <div class="disc-info">
+        <span class="disc-tile-badge">Tile ${val}</span>
+        <span class="disc-title">${entry.title}</span>
+        <span class="disc-desc">${entry.desc}</span>
+        <span class="disc-link-hint">channel3.gg ↗</span>
+      </div>`;
+
+    inner.appendChild(card);
+
+    // Remove is-new after a moment so it doesn't persist across re-renders
+    if (isNew) setTimeout(() => card.classList.remove('is-new'), 4000);
+  });
+
+  // Scroll to newest card
+  if (highlightValues.length > 0) {
+    setTimeout(() => {
+      const lastNew = Math.max(...highlightValues);
+      const idx = discovered.indexOf(lastNew);
+      if (idx >= 0) {
+        const cardEls = inner.querySelectorAll('.disc-card');
+        cardEls[idx]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }, 400);
+  }
+}
+
+function showDiscoveryToast(title, val) {
+  const gameScreen = document.getElementById('screen-game');
+  if (!gameScreen) return;
+  const toast = document.createElement('div');
+  toast.className   = 'disc-toast';
+  toast.textContent = `✦ ${val} unlocked: ${title}`;
+  gameScreen.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// Restore panel on session start (if tiles already discovered)
+function restoreDiscoveryPanel() {
+  const panel = document.getElementById('discovery-panel');
+  if (!panel) return;
+  const discovered = [...state.discoveredTiles].filter(v => CONFIG.MEDIA_CATALOG[v]);
+  if (discovered.length > 0) {
+    panel.classList.add('visible');
+    renderer.setDiscoveryPanelH(DISC_PANEL_H);
+    renderDiscoveryPanel();
+  }
+}
+
+// ============================================================
 // BOOT
 // ============================================================
 
@@ -20,6 +140,9 @@ const canvas = document.getElementById('game-canvas');
 initState();
 renderer.init(canvas);
 input.setup(canvas, handleSwipe, handleTap);
+
+// Preload all media images so tiles show art from move 1
+preloadAllMedia();
 
 // Resize handler
 window.addEventListener('resize', () => {
@@ -32,6 +155,9 @@ requestAnimationFrame(gameLoop);
 // Populate UI from stored state
 refreshMenuUI();
 setupHTMLListeners();
+
+// Restore discovery panel if tiles were found in a prior session
+restoreDiscoveryPanel();
 
 // ============================================================
 // GAME LOOP
@@ -224,6 +350,9 @@ function beginGame() {
   let { newGrid: ng2 } = logic.spawnTile(state.grid, CONFIG.SPAWN_4_PROBABILITY, base);
   state.grid = ng2;
 
+  // Spawned tiles may already be catalog values (e.g. tile 3)
+  checkDiscoveries();
+
   showScreen('playing');
 }
 
@@ -319,6 +448,9 @@ function handleSwipe(direction) {
 
   // Update state grid AFTER snapshot for animation
   state.grid = gridWithSpawn;
+
+  // Check for newly discovered catalog tiles
+  checkDiscoveries();
 
   // Skip animations if disabled
   if (state.settings.animEnabled === false) {
@@ -452,6 +584,9 @@ function applyPowerupToCell(row, col) {
   state.grid        = newGrid;
   state.activePower = null;
   state.screen      = 'PLAYING';
+
+  // Check for newly discovered catalog tiles after powerup
+  checkDiscoveries();
 
   // Check win after DOUBLE (could create 2048)
   if (!state.wonAcknowledged && !state.won && logic.hasWon(state.grid, state.winTile)) {
