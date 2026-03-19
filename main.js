@@ -694,6 +694,8 @@ let winTimerStart = 0;
 
 function handleWin() {
   state.won = true;
+  const winEl = document.getElementById('win-title');
+  if (winEl) winEl.textContent = state.winTile + '!';
   showOverlay('win');
   winTimerStart = performance.now();
   startWinTimer();

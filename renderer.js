@@ -16,6 +16,9 @@ let canvas, ctx;
 let logW = 0, logH = 0;   // logical (CSS) dimensions
 let dpr   = 1;
 
+// ---- Current layout (set each frame for use by helpers like drawTile) ----
+let curLayout = null;
+
 // ---- Animation state ----
 let phase   = 'idle';      // 'idle' | 'slide' | 'merge' | 'spawn'
 let phaseStart = 0;
@@ -60,7 +63,7 @@ export function preloadMediaImage(value, src) {
 
 // ---- Powerup bar scroll state ----
 let barScrollX   = 0;
-const BTN_W      = 82;   // fixed button width regardless of board width
+const BTN_W      = 82;   // fixed button width (intentionally NOT scaled — keeps scroll manageable)
 const BTN_GAP    = 8;
 const BAR_PAD    = 10;   // inner left/right padding
 
@@ -96,6 +99,7 @@ export function render(timestamp) {
   ctx.clearRect(0, 0, logW, logH);
 
   const layout = getLayout();
+  curLayout = layout;
   drawBackground(layout);
   drawHeader(layout);
 
@@ -192,10 +196,10 @@ export function getLayout() {
 // LAYOUT COMPUTATION
 // ============================================================
 
-// Bumper dimensions — thin strips
-const BMP_TB  = 22;   // top / bottom bumper height
-const BMP_LR  = 22;   // left / right bumper width
-const BMP_GAP = 5;    // gap between bumper and board edge
+// Base bumper dimensions (scaled by S at layout time)
+const BMP_TB_BASE  = 22;   // top / bottom bumper height
+const BMP_LR_BASE  = 22;   // left / right bumper width
+const BMP_GAP_BASE = 5;    // gap between bumper and board edge
 
 function computeLayout(w, h) {
   const N = state.grid.length || CONFIG.GRID_SIZE;
@@ -203,36 +207,55 @@ function computeLayout(w, h) {
   // Reserve space for HTML discovery panel at bottom
   h = h - discoveryPanelH;
 
-  // Fixed chrome heights
-  const HEADER_H   = 56;
-  const POWERBAR_H = state.settings.powersEnabled !== false ? 78 : 0;
-  const MARGIN_V   = 8;   // top + bottom outer margins
-  const MARGIN_H   = 8;   // left + right outer margins
+  // ---- UI scale factor: 1.0 on phones, up to 1.5 on desktop ----
+  // Derived from the shorter viewport dimension for consistent proportions
+  const shortest = Math.min(w, h);
+  const S = shortest < 500 ? 1 : Math.min(shortest / 500, 1.5);
 
-  // Vertical stack: header | gap | top-bumper | gap | BOARD | gap | bot-bumper | gap | powerbar
-  const fixedV = HEADER_H + MARGIN_V + (BMP_TB + BMP_GAP) * 2 + POWERBAR_H + MARGIN_V;
+  // Scaled chrome dimensions
+  const HEADER_H   = Math.round(56 * S);
+  const POWERBAR_H = state.settings.powersEnabled !== false ? Math.round(78 * S) : 0;
+  const MARGIN_V   = Math.round(8 * S);
+  const MARGIN_H   = Math.round(8 * S);
+  const bmpTB      = Math.round(BMP_TB_BASE * S);
+  const bmpLR      = Math.round(BMP_LR_BASE * S);
+  const bmpGap     = Math.round(BMP_GAP_BASE * S);
+
+  // Vertical stack: header | margin | top-bumper+gap | BOARD | gap+bot-bumper | margin | powerbar
+  const fixedV = HEADER_H + MARGIN_V + (bmpTB + bmpGap) * 2 + POWERBAR_H + MARGIN_V;
   const availH  = h - fixedV;
 
-  // Horizontal: margin | left-bumper | gap | BOARD | gap | right-bumper | margin
-  const fixedH = 2 * MARGIN_H + 2 * (BMP_LR + BMP_GAP);
+  // Horizontal: margin | left-bumper+gap | BOARD | gap+right-bumper | margin
+  const fixedH = 2 * MARGIN_H + 2 * (bmpLR + bmpGap);
   const availW  = w - fixedH;
 
-  const boardSize = Math.min(availH, availW, 480);
+  // Board fills remaining space — no arbitrary pixel cap
+  const boardSize = Math.min(availH, availW);
 
-  // Board origin — centred horizontally, stacked vertically from header.
-  // Cap vertical centering to 16px so portrait phones don't get a dead band above the board.
+  // Board origin — centred horizontally
   const boardX = (w - boardSize) / 2;
-  const topOfBoard = HEADER_H + MARGIN_V + BMP_TB + BMP_GAP;
-  const boardY = topOfBoard + Math.max(0, Math.min((availH - boardSize) / 2, 16));
+  const topOfBoard = HEADER_H + MARGIN_V + bmpTB + bmpGap;
+  // On phones, cap vertical centering to keep board tight; on desktop, centre freely
+  const centerCap = shortest < 500 ? 16 : Infinity;
+  const boardY = topOfBoard + Math.max(0, Math.min((availH - boardSize) / 2, centerCap));
 
-  const gap      = CONFIG.TILE_GAP;
-  const padding  = CONFIG.BOARD_PADDING;
+  // Scaled tile geometry
+  const gap      = Math.round(CONFIG.TILE_GAP * S);
+  const padding  = Math.round(CONFIG.BOARD_PADDING * S);
   const cellSize = (boardSize - 2 * padding - (N - 1) * gap) / N;
 
   // Powerbar sits directly below board + bottom bumper + margin
-  const powerBarY = boardY + boardSize + BMP_GAP + BMP_TB + MARGIN_V;
+  const powerBarY = boardY + boardSize + bmpGap + bmpTB + MARGIN_V;
 
-  return { w, h, boardX, boardY, boardSize, N, gap, padding, cellSize, HEADER_H, POWERBAR_H, powerBarY };
+  // Scaled radii
+  const boardRadius = Math.round(CONFIG.BOARD_RADIUS * S);
+  const tileRadius  = Math.round(CONFIG.TILE_RADIUS * S);
+
+  return {
+    w, h, boardX, boardY, boardSize, N, gap, padding, cellSize,
+    HEADER_H, POWERBAR_H, powerBarY,
+    S, bmpTB, bmpLR, bmpGap, boardRadius, tileRadius,
+  };
 }
 
 // Cell top-left pixel
@@ -257,49 +280,49 @@ function drawBackground(_layout) {
 // DRAWING — Header (Score + Quit button)
 // ============================================================
 
-function drawHeader({ w, h, HEADER_H }) {
-  const H  = HEADER_H;
-  const cy = H / 2;
+function drawHeader(layout) {
+  const { w, h, HEADER_H, S } = layout;
+  const cy = HEADER_H / 2;
 
-  // Quit button — left side; shrinks to ✕ on portrait/mobile
+  // Quit button — left side; shrinks to X on portrait/mobile
   const isMobile = h > w;
-  const qW = isMobile ? 28 : 48;
-  const qH = isMobile ? 28 : 30;
-  const qX = 10, qY = cy - qH / 2;
-  roundRect(ctx, qX, qY, qW, qH, 7);
+  const qW = Math.round((isMobile ? 28 : 48) * S);
+  const qH = Math.round((isMobile ? 28 : 30) * S);
+  const qX = Math.round(10 * S), qY = cy - qH / 2;
+  roundRect(ctx, qX, qY, qW, qH, Math.round(7 * S));
   ctx.fillStyle = CONFIG.COLORS.BOARD_BG;
   ctx.fill();
   ctx.fillStyle    = CONFIG.COLORS.TEXT_LIGHT;
-  ctx.font         = `bold ${isMobile ? 14 : 11}px ${CONFIG.FONT_FAMILY}`;
+  ctx.font         = `bold ${Math.round((isMobile ? 14 : 11) * S)}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(isMobile ? '✕' : 'QUIT', qX + qW / 2, qY + qH / 2);
   hitAreas.quitBtn = { x: qX, y: qY, w: qW, h: qH };
 
-  // Score boxes — centred (72px wide for legibility at high scores)
-  const boxW = 72, boxH = 40, gap = 8;
+  // Score boxes — centred
+  const boxW = Math.round(72 * S), boxH = Math.round(40 * S), gap = Math.round(8 * S);
   const totalW = boxW * 2 + gap;
   const bx = (w - totalW) / 2;
   const by = cy - boxH / 2;
-  drawScoreBox(bx,          by, boxW, boxH, 'SCORE', Math.round(state.displayScore));
-  drawScoreBox(bx + boxW + gap, by, boxW, boxH, 'BEST',  state.best);
+  drawScoreBox(bx,          by, boxW, boxH, 'SCORE', Math.round(state.displayScore), S);
+  drawScoreBox(bx + boxW + gap, by, boxW, boxH, 'BEST',  state.best, S);
 }
 
-function drawScoreBox(x, y, w, h, label, value) {
-  roundRect(ctx, x, y, w, h, 6);
+function drawScoreBox(x, y, w, h, label, value, S) {
+  roundRect(ctx, x, y, w, h, Math.round(6 * S));
   ctx.fillStyle = CONFIG.COLORS.BOARD_BG;
   ctx.fill();
 
   ctx.fillStyle    = 'rgba(249,246,242,0.70)';
-  ctx.font         = `bold 10px ${CONFIG.FONT_FAMILY}`;
+  ctx.font         = `bold ${Math.round(10 * S)}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, x + w / 2, y + 11);
+  ctx.fillText(label, x + w / 2, y + Math.round(11 * S));
 
   ctx.fillStyle = CONFIG.COLORS.TEXT_LIGHT;
-  const fontSize = value >= 100000 ? 12 : value >= 10000 ? 14 : 17;
-  ctx.font       = `bold ${fontSize}px ${CONFIG.FONT_FAMILY}`;
-  ctx.fillText(String(value), x + w / 2, y + h - 12);
+  const baseFontSize = value >= 100000 ? 12 : value >= 10000 ? 14 : 17;
+  ctx.font       = `bold ${Math.round(baseFontSize * S)}px ${CONFIG.FONT_FAMILY}`;
+  ctx.fillText(String(value), x + w / 2, y + h - Math.round(12 * S));
 }
 
 // ============================================================
@@ -307,24 +330,24 @@ function drawScoreBox(x, y, w, h, label, value) {
 // ============================================================
 
 function drawArrowBumpers(layout) {
-  const { boardX, boardY, boardSize } = layout;
+  const { boardX, boardY, boardSize, bmpTB, bmpLR, bmpGap, S } = layout;
   const isTargeting = state.screen === 'TARGETING';
 
   // Top / bottom: full board width, thin height
   // Left / right: full board height, thin width
   const bumpers = [
     { dir: 'up',
-      x: boardX,                          y: boardY - BMP_GAP - BMP_TB,
-      w: boardSize,                       h: BMP_TB, arrow: '↑' },
+      x: boardX,                          y: boardY - bmpGap - bmpTB,
+      w: boardSize,                       h: bmpTB, arrow: '↑' },
     { dir: 'down',
-      x: boardX,                          y: boardY + boardSize + BMP_GAP,
-      w: boardSize,                       h: BMP_TB, arrow: '↓' },
+      x: boardX,                          y: boardY + boardSize + bmpGap,
+      w: boardSize,                       h: bmpTB, arrow: '↓' },
     { dir: 'left',
-      x: boardX - BMP_GAP - BMP_LR,      y: boardY,
-      w: BMP_LR,                          h: boardSize, arrow: '←' },
+      x: boardX - bmpGap - bmpLR,        y: boardY,
+      w: bmpLR,                           h: boardSize, arrow: '←' },
     { dir: 'right',
-      x: boardX + boardSize + BMP_GAP,   y: boardY,
-      w: BMP_LR,                          h: boardSize, arrow: '→' },
+      x: boardX + boardSize + bmpGap,     y: boardY,
+      w: bmpLR,                           h: boardSize, arrow: '→' },
   ];
 
   hitAreas.arrows = [];
@@ -333,7 +356,7 @@ function drawArrowBumpers(layout) {
     ctx.save();
 
     // Pill background
-    roundRect(ctx, b.x, b.y, b.w, b.h, 8);
+    roundRect(ctx, b.x, b.y, b.w, b.h, Math.round(8 * S));
     ctx.fillStyle = isTargeting ? 'rgba(187,173,160,0.15)' : 'rgba(187,173,160,0.38)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
@@ -359,10 +382,10 @@ function drawArrowBumpers(layout) {
 // ============================================================
 
 function drawBoard(layout) {
-  const { boardX, boardY, boardSize, N, cellSize, gap, padding } = layout;
+  const { boardX, boardY, boardSize, N, cellSize, gap, padding, boardRadius, tileRadius } = layout;
 
   // Board background
-  roundRect(ctx, boardX, boardY, boardSize, boardSize, CONFIG.BOARD_RADIUS);
+  roundRect(ctx, boardX, boardY, boardSize, boardSize, boardRadius);
   ctx.fillStyle = CONFIG.COLORS.BOARD_BG;
   ctx.fill();
 
@@ -371,7 +394,7 @@ function drawBoard(layout) {
   for (let r = 0; r < N; r++) {
     for (let c = 0; c < N; c++) {
       const { x, y } = cellTL(r, c, layout);
-      roundRect(ctx, x, y, cellSize, cellSize, CONFIG.TILE_RADIUS);
+      roundRect(ctx, x, y, cellSize, cellSize, tileRadius);
       ctx.fillStyle = CONFIG.COLORS.CELL_EMPTY;
       ctx.fill();
       hitAreas.cells.push({ row: r, col: c, x, y, w: cellSize, h: cellSize });
@@ -461,6 +484,7 @@ function drawSlide(layout, t) {
 function drawTile(x, y, size, value, scale = 1, alpha = 1) {
   const baseTile = state.settings.baseTile || CONFIG.BASE_TILE;
   const colors   = getTileColors(value, baseTile);
+  const tileR    = curLayout ? curLayout.tileRadius : CONFIG.TILE_RADIUS;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -481,7 +505,7 @@ function drawTile(x, y, size, value, scale = 1, alpha = 1) {
   }
 
   // Tile background
-  roundRect(ctx, x, y, size, size, CONFIG.TILE_RADIUS);
+  roundRect(ctx, x, y, size, size, tileR);
   ctx.fillStyle = colors.bg;
   ctx.fill();
 
@@ -493,7 +517,7 @@ function drawTile(x, y, size, value, scale = 1, alpha = 1) {
     ctx.save();
     ctx.globalAlpha = alpha * 0.18;
     ctx.beginPath();
-    roundRect(ctx, x, y, size, size, CONFIG.TILE_RADIUS);
+    roundRect(ctx, x, y, size, size, tileR);
     ctx.clip();
     // Cover-fit: fill the tile square
     const iw = img.naturalWidth, ih = img.naturalHeight;
@@ -524,9 +548,9 @@ function drawTile(x, y, size, value, scale = 1, alpha = 1) {
 // ============================================================
 
 function drawPowerupBar(layout) {
-  const { boardX, boardSize, POWERBAR_H, powerBarY } = layout;
+  const { boardX, boardSize, POWERBAR_H, powerBarY, S } = layout;
   const barW = boardSize;
-  const barH = Math.min(70, POWERBAR_H - 8);
+  const barH = Math.min(Math.round(70 * S), POWERBAR_H - Math.round(8 * S));
   const barX = boardX;
   const barY = powerBarY + (POWERBAR_H - barH) / 2;
 
@@ -543,7 +567,7 @@ function drawPowerupBar(layout) {
     return cb - ca;
   });
 
-  const btnH      = barH - 14;           // button height leaves room for scroll indicator
+  const btnH      = barH - Math.round(14 * S);   // button height leaves room for scroll indicator
   const contentW  = sorted.length * BTN_W + (sorted.length - 1) * BTN_GAP + 2 * BAR_PAD;
   const maxScroll = Math.max(0, contentW - barW);
 
@@ -552,7 +576,7 @@ function drawPowerupBar(layout) {
 
   // ---- Bar glass background ----
   ctx.save();
-  roundRect(ctx, barX, barY, barW, barH, 14);
+  roundRect(ctx, barX, barY, barW, barH, Math.round(14 * S));
   ctx.fillStyle = 'rgba(187,173,160,0.32)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,0.5)';
@@ -560,7 +584,7 @@ function drawPowerupBar(layout) {
   ctx.stroke();
 
   // ---- Clip to bar interior so buttons don't bleed over edges ----
-  roundRect(ctx, barX + 1, barY + 1, barW - 2, barH - 2, 13);
+  roundRect(ctx, barX + 1, barY + 1, barW - 2, barH - 2, Math.round(13 * S));
   ctx.clip();
 
   hitAreas.powerups = [];
@@ -572,13 +596,13 @@ function drawPowerupBar(layout) {
 
     // Absolute X in canvas space (accounting for scroll)
     const bX = barX + BAR_PAD + i * (BTN_W + BTN_GAP) - barScrollX;
-    const bY = barY + (barH - btnH) / 2 - 3; // shift up slightly for scroll indicator
+    const bY = barY + (barH - btnH) / 2 - Math.round(3 * S); // shift up slightly for scroll indicator
 
     // Skip if entirely outside bar
     if (bX + BTN_W < barX || bX > barX + barW) return;
 
     // Button background
-    roundRect(ctx, bX, bY, BTN_W, btnH, 10);
+    roundRect(ctx, bX, bY, BTN_W, btnH, Math.round(10 * S));
     ctx.fillStyle = active ? CONFIG.COLORS.TEXT_DARK
                   : empty  ? 'rgba(0,0,0,0.06)'
                            : 'rgba(255,255,255,0.52)';
@@ -586,15 +610,15 @@ function drawPowerupBar(layout) {
 
     ctx.globalAlpha = empty ? 0.32 : 1;
 
-    // Icon
+    // Icon — scale font with button height
     ctx.fillStyle    = active ? CONFIG.COLORS.TEXT_LIGHT : CONFIG.COLORS.TEXT_DARK;
     ctx.font         = `${Math.round(btnH * 0.36)}px ${CONFIG.FONT_FAMILY}`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(p.icon, bX + BTN_W / 2, bY + btnH * 0.38);
 
-    // Label
-    ctx.font      = `bold 8px ${CONFIG.FONT_FAMILY}`;
+    // Label — scale with S
+    ctx.font      = `bold ${Math.round(8 * S)}px ${CONFIG.FONT_FAMILY}`;
     ctx.fillStyle = active ? CONFIG.COLORS.TEXT_LIGHT : CONFIG.COLORS.TEXT_DARK;
     ctx.fillText(p.label, bX + BTN_W / 2, bY + btnH * 0.70);
 
@@ -602,7 +626,7 @@ function drawPowerupBar(layout) {
 
     // Charge badge
     if (charges > 0) {
-      const bR  = 8;
+      const bR  = Math.round(8 * S);
       const bCX = bX + BTN_W - bR + 1;
       const bCY = bY + bR - 1;
       ctx.beginPath();
@@ -610,7 +634,7 @@ function drawPowerupBar(layout) {
       ctx.fillStyle = active ? CONFIG.COLORS.TEXT_LIGHT : CONFIG.COLORS.BOARD_BG;
       ctx.fill();
       ctx.fillStyle = active ? CONFIG.COLORS.TEXT_DARK : CONFIG.COLORS.TEXT_LIGHT;
-      ctx.font      = `bold 10px ${CONFIG.FONT_FAMILY}`;
+      ctx.font      = `bold ${Math.round(10 * S)}px ${CONFIG.FONT_FAMILY}`;
       ctx.fillText(String(charges), bCX, bCY);
     }
 
@@ -625,28 +649,29 @@ function drawPowerupBar(layout) {
 
   // ---- Scroll indicator (only if scrollable) ----
   if (maxScroll > 0) {
-    const indicatorY  = barY + barH - 5;
-    const trackW      = barW - 24;
-    const trackX      = barX + 12;
-    const thumbW      = Math.max(28, trackW * (barW / contentW));
+    const indicatorY  = barY + barH - Math.round(5 * S);
+    const trackW      = barW - Math.round(24 * S);
+    const trackX      = barX + Math.round(12 * S);
+    const thumbW      = Math.max(Math.round(28 * S), trackW * (barW / contentW));
     const thumbX      = trackX + (barScrollX / maxScroll) * (trackW - thumbW);
+    const trackH      = Math.round(3 * S);
 
     // Register a generous hit area around the track for click-to-jump
-    hitAreas.scrollTrack = { x: trackX, y: indicatorY - 8, w: trackW, h: 16, maxScroll, thumbW };
+    hitAreas.scrollTrack = { x: trackX, y: indicatorY - Math.round(8 * S), w: trackW, h: Math.round(16 * S), maxScroll, thumbW };
 
     // Track
     ctx.save();
     ctx.globalAlpha = 0.25;
     ctx.fillStyle   = CONFIG.COLORS.TEXT_DARK;
     ctx.beginPath();
-    ctx.roundRect(trackX, indicatorY, trackW, 3, 1.5);
+    ctx.roundRect(trackX, indicatorY, trackW, trackH, trackH / 2);
     ctx.fill();
 
     // Thumb
     ctx.globalAlpha = 0.55;
     ctx.fillStyle   = CONFIG.COLORS.TEXT_DARK;
     ctx.beginPath();
-    ctx.roundRect(thumbX, indicatorY, thumbW, 3, 1.5);
+    ctx.roundRect(thumbX, indicatorY, thumbW, trackH, trackH / 2);
     ctx.fill();
     ctx.restore();
   } else {
@@ -659,10 +684,10 @@ function drawPowerupBar(layout) {
 // ============================================================
 
 function drawTargetingOverlay(layout) {
-  const { boardX, boardY, boardSize, N, cellSize } = layout;
+  const { boardX, boardY, boardSize, N, cellSize, boardRadius, tileRadius, S } = layout;
 
   // Dim the board
-  roundRect(ctx, boardX, boardY, boardSize, boardSize, CONFIG.BOARD_RADIUS);
+  roundRect(ctx, boardX, boardY, boardSize, boardSize, boardRadius);
   ctx.fillStyle = 'rgba(0,0,0,0.48)';
   ctx.fill();
 
@@ -685,11 +710,11 @@ function drawTargetingOverlay(layout) {
                            state.swapFirst.row === r && state.swapFirst.col === c);
 
       ctx.save();
-      roundRect(ctx, x, y, cellSize, cellSize, CONFIG.TILE_RADIUS);
+      roundRect(ctx, x, y, cellSize, cellSize, tileRadius);
       ctx.strokeStyle = isSwapFirst
         ? `rgba(237,194,46,${0.7 + 0.3 * pulse})`
         : `rgba(255,255,255,${0.5 + 0.5 * pulse})`;
-      ctx.lineWidth = isSwapFirst ? 4 : 3;
+      ctx.lineWidth = isSwapFirst ? Math.round(4 * S) : Math.round(3 * S);
       ctx.stroke();
       if (!isEmpty) {
         ctx.fillStyle = isSwapFirst
@@ -707,10 +732,10 @@ function drawTargetingOverlay(layout) {
     hint = state.swapFirst ? 'Tap second tile  ·  Swipe to cancel' : 'Tap first tile  ·  Swipe to cancel';
   }
   ctx.fillStyle    = 'rgba(255,255,255,0.85)';
-  ctx.font         = `bold 13px ${CONFIG.FONT_FAMILY}`;
+  ctx.font         = `bold ${Math.round(13 * S)}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(hint, boardX + boardSize / 2, boardY - 14);
+  ctx.fillText(hint, boardX + boardSize / 2, boardY - Math.round(14 * S));
 }
 
 // ============================================================
@@ -718,22 +743,22 @@ function drawTargetingOverlay(layout) {
 // ============================================================
 
 function drawPowerDropPicker(layout) {
-  const { w, h } = layout;
+  const { w, h, S } = layout;
 
   // Full-screen dim
   ctx.fillStyle = 'rgba(0,0,0,0.58)';
   ctx.fillRect(0, 0, w, h);
 
-  // Card
-  const btnW = 82, btnH = 92, btnGap = 10;
+  // Card — scale all dimensions
+  const btnW = Math.round(82 * S), btnH = Math.round(92 * S), btnGap = Math.round(10 * S);
   const totalBtnW = 3 * btnW + 2 * btnGap;
-  const cardPadX = 24, cardPadTop = 44, cardPadBot = 20;
+  const cardPadX = Math.round(24 * S), cardPadTop = Math.round(44 * S), cardPadBot = Math.round(20 * S);
   const cardW = totalBtnW + cardPadX * 2;
   const cardH = cardPadTop + btnH + cardPadBot;
   const cardX = (w - cardW) / 2;
   const cardY = (h - cardH) / 2;
 
-  roundRect(ctx, cardX, cardY, cardW, cardH, 20);
+  roundRect(ctx, cardX, cardY, cardW, cardH, Math.round(20 * S));
   ctx.fillStyle = CONFIG.COLORS.BG;  // Almond — stays on-palette
   ctx.fill();
   ctx.strokeStyle = 'rgba(187,173,160,0.55)';
@@ -742,10 +767,10 @@ function drawPowerDropPicker(layout) {
 
   // Title
   ctx.fillStyle    = CONFIG.COLORS.TEXT_DARK;
-  ctx.font         = `bold 13px ${CONFIG.FONT_FAMILY}`;
+  ctx.font         = `bold ${Math.round(13 * S)}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('⚡ Power Drop — pick one!', w / 2, cardY + 22);
+  ctx.fillText('⚡ Power Drop — pick one!', w / 2, cardY + Math.round(22 * S));
 
   // Buttons
   const btnStartX = cardX + cardPadX;
@@ -758,7 +783,7 @@ function drawPowerDropPicker(layout) {
     const bX   = btnStartX + i * (btnW + btnGap);
 
     // Button bg
-    roundRect(ctx, bX, btnY, btnW, btnH, 12);
+    roundRect(ctx, bX, btnY, btnW, btnH, Math.round(12 * S));
     ctx.fillStyle = 'rgba(187,173,160,0.22)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(187,173,160,0.55)';
@@ -773,7 +798,7 @@ function drawPowerDropPicker(layout) {
     ctx.fillText(meta.icon, bX + btnW / 2, btnY + btnH * 0.38);
 
     // Label
-    ctx.font      = `bold 9px ${CONFIG.FONT_FAMILY}`;
+    ctx.font      = `bold ${Math.round(9 * S)}px ${CONFIG.FONT_FAMILY}`;
     ctx.fillStyle = CONFIG.COLORS.TEXT_DARK;
     ctx.fillText(meta.label, bX + btnW / 2, btnY + btnH * 0.76);
 
@@ -786,15 +811,15 @@ function drawPowerDropPicker(layout) {
 // ============================================================
 
 function drawFreezeIndicator(layout) {
-  const { boardX, boardY, boardSize } = layout;
+  const { boardX, boardY, boardSize, S } = layout;
   const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 400);
   ctx.save();
   ctx.globalAlpha = 0.7 + 0.3 * pulse;
   ctx.fillStyle   = CONFIG.FREEZE_INDICATOR_COLOR;
-  ctx.font        = `bold 11px ${CONFIG.FONT_FAMILY}`;
+  ctx.font        = `bold ${Math.round(11 * S)}px ${CONFIG.FONT_FAMILY}`;
   ctx.textAlign   = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('❄ SPAWN FROZEN', boardX + boardSize / 2, boardY - 14);
+  ctx.fillText('❄ SPAWN FROZEN', boardX + boardSize / 2, boardY - Math.round(14 * S));
   ctx.restore();
 }
 
@@ -812,7 +837,7 @@ function drawPowerDropToast(layout, timestamp) {
   const alpha    = progress < 0.6 ? 1 : 1 - (progress - 0.6) / 0.4;
   const rise     = -30 * progress; // float upward
 
-  const { boardX, boardSize, boardY } = layout;
+  const { boardX, boardSize, boardY, S } = layout;
   const cx = boardX + boardSize / 2;
   const cy = boardY + boardSize / 2 + rise;
 
@@ -820,12 +845,12 @@ function drawPowerDropToast(layout, timestamp) {
   ctx.globalAlpha = alpha;
 
   // Pill background
-  const PAD_X = 16, PAD_Y = 8;
-  ctx.font = `bold 14px ${CONFIG.FONT_FAMILY}`;
+  const PAD_X = Math.round(16 * S);
+  ctx.font = `bold ${Math.round(14 * S)}px ${CONFIG.FONT_FAMILY}`;
   const textW = ctx.measureText(powerDropToast.text).width;
   const pillW = textW + PAD_X * 2;
-  const pillH = 30;
-  roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, 15);
+  const pillH = Math.round(30 * S);
+  roundRect(ctx, cx - pillW / 2, cy - pillH / 2, pillW, pillH, Math.round(15 * S));
   ctx.fillStyle = CONFIG.COLORS.TEXT_DARK;
   ctx.fill();
 

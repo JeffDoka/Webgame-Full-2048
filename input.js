@@ -4,11 +4,12 @@
    and horizontal drag-to-scroll on the powerup bar.
    ============================================================ */
 
-import { hitAreas, setBarScroll, getBarScrollX } from './renderer.js';
+import { hitAreas, setBarScroll, getBarScrollX, getLayout } from './renderer.js';
 
 const SWIPE_THRESHOLD  = 30;   // px minimum for swipe recognition
 const SWIPE_TIMEOUT_MS = 500;  // ignore slow drags
 const TAP_THRESHOLD    = 8;    // px — anything smaller is a tap, even in bar
+const BOARD_TOUCH_PAD  = 30;   // px padding around board for touch capture (covers bumpers)
 
 let onSwipe = null;   // (direction: 'left'|'right'|'up'|'down') => void
 let onTap   = null;   // (x, y) => void — canvas-space coordinates
@@ -35,8 +36,24 @@ export function setup(canvas, swipeCb, tapCb) {
   canvas.addEventListener('pointerup',     onPointerUp,     { passive: true });
   canvas.addEventListener('pointercancel', onPointerCancel, { passive: true });
 
-  // Prevent browser swipe-back / pull-to-refresh navigation
-  canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  // Only prevent default (block scrolling) when touch starts on the board or powerup bar.
+  // Touches elsewhere (score header, empty space) pass through for natural page scroll.
+  canvas.addEventListener('touchstart', e => {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches[0];
+    const x = t.clientX - rect.left;
+    const y = t.clientY - rect.top;
+
+    const layout = getLayout();
+    const { boardX, boardY, boardSize } = layout;
+    const onBoard = x >= boardX - BOARD_TOUCH_PAD && x <= boardX + boardSize + BOARD_TOUCH_PAD &&
+                    y >= boardY - BOARD_TOUCH_PAD && y <= boardY + boardSize + BOARD_TOUCH_PAD;
+    const onBar = hitAreas.barRect && inRect(x, y, hitAreas.barRect);
+
+    if (onBoard || onBar) {
+      e.preventDefault();
+    }
+  }, { passive: false });
 }
 
 // ============================================================
