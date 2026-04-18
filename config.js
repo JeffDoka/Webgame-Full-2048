@@ -54,7 +54,7 @@ export const CONFIG = {
 
   // ---- Mechanics ----
   BASE_TILE:          3,    // starting tile value (2–5); win tile = BASE_TILE × 1024
-  WIN_TILE:           2048, // legacy fallback (overridden by state.winTile at runtime)
+  WIN_TILE:           3072, // legacy fallback (overridden by state.winTile at runtime)
   SPAWN_4_PROBABILITY: 0.10,
   WIN_DISMISS_MS:     5000,
 
@@ -67,18 +67,18 @@ export const CONFIG = {
 
   // ---- Powerup Charges ----
   POWERS: {
-    LASER:     2,   // remove one tile
+    LASER:     1,   // remove one tile
     BOMB:      1,   // wipe 3x3 area
-    REARRANGE: 1,   // Fisher-Yates shuffle all tiles
-    DOUBLE:    1,   // double a single tile's value
-    UNDO:      1,   // rewind one move
-    FREEZE:    1,   // skip next tile spawn
-    UPGRADE:   1,   // auto-double the highest tile
-    SWAP:      1,   // swap any two tiles (two-step targeting)
+    REARRANGE: 0,   // Fisher-Yates shuffle all tiles
+    DOUBLE:    0,   // double a single tile's value
+    UNDO:      0,   // rewind one move
+    FREEZE:    0,   // skip next tile spawn
+    UPGRADE:   0,   // auto-double the highest tile
+    SWAP:      0,   // swap any two tiles (two-step targeting)
   },
 
   // ---- Power-up drop cadence ----
-  POWER_DROP_EVERY: 10,  // every N moves, grant a random powerup charge
+  POWER_DROP_EVERY: 15,  // every N moves, grant a random powerup charge
   FREEZE_INDICATOR_COLOR: 'rgba(100,200,255,0.92)',
 
   // ---- Tag Thresholds ----
